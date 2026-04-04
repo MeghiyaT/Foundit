@@ -1,0 +1,35 @@
+# Secrets & local env
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env.local
+
+# Python
+backend/.venv/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Hardhat / blockchain
+blockchain/node_modules/
+blockchain/cache/
+blockchain/artifacts/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# OS & editors
+.DS_Store
+*.swp
+.idea/
+.vscode/
