@@ -6,8 +6,6 @@ Model is lazy-loaded and cached in memory after the first call.
 
 import asyncio
 import logging
-import os
-import httpx
 from io import BytesIO
 from typing import List, Optional
 from PIL import Image
@@ -33,41 +31,7 @@ def _get_model():
 
 
 def _generate_embedding_sync(image_bytes: bytes) -> Optional[List[float]]:
-    """Synchronous version — runs in thread pool or uses HF api."""
-    hf_token = os.environ.get("HUGGINGFACE_API_KEY")
-    
-    if hf_token:
-        # Avoid local RAM usage, use HuggingFace Serverless Inference API
-        try:
-            logger.info("Generating embedding via HuggingFace Inference API...")
-            api_url = "https://router.huggingface.co/hf-inference/models/sentence-transformers/clip-ViT-B-32"
-            headers = {
-                "Authorization": f"Bearer {hf_token}",
-                "Content-Type": "application/octet-stream"
-            }
-            
-            # Using httpx synchronously since we are in a ThreadPoolExecutor
-            # Binary byte array payload is natively supported for vision Inference endpoints
-            response = httpx.post(api_url, headers=headers, content=image_bytes, timeout=25.0)
-            
-            if response.status_code == 200:
-                data = response.json()
-                # HF can return [ [0.1, 0.2...] ] or dict depends on the model
-                if isinstance(data, list) and len(data) > 0:
-                    if isinstance(data[0], list):
-                        return data[0]  # Take first embedding
-                    if isinstance(data[0], float) or isinstance(data[0], int):
-                        return data
-                logger.error(f"HF API Unexpected JSON format: {data}")
-                return None
-            else:
-                logger.error(f"HF API Failed: {response.status_code} - {response.text}")
-                # Fallthrough to local model if API fails
-        except Exception as e:
-            logger.error(f"HF API Request Exception: {e}")
-            # Fallthrough to local model
-    
-    # Fallback to local model loading if no HF token or API failed
+    """Synchronous version — runs in thread pool."""
     try:
         model = _get_model()
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
