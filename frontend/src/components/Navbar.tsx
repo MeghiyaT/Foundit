@@ -8,6 +8,7 @@ import { useUser, useAuth, UserButton, SignInButton } from '@clerk/nextjs';
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/items', label: 'Browse' },
+  { href: '/my-items', label: 'My Items' },
   { href: '/report', label: 'Report Item' },
   { href: '/matches', label: 'My Matches' },
   { href: '/messages', label: 'Messages' },

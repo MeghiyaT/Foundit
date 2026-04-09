@@ -22,6 +22,7 @@ async def list_items(
     category: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(12, ge=1, le=50),
 ):
@@ -37,6 +38,8 @@ async def list_items(
         query = query.eq("status", status)
     if search:
         query = query.ilike("title", f"%{search}%")
+    if user_id:
+        query = query.eq("user_id", user_id)
 
     offset = (page - 1) * limit
     query = query.order("created_at", desc=True).range(offset, offset + limit - 1)

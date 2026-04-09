@@ -8,6 +8,7 @@ import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
 import MatchCard from '@/components/MatchCard';
 import MessageModal from '@/components/MessageModal';
+import { useAuth } from '@clerk/nextjs';
 import api from '@/lib/api';
 import { formatDate, getStatusClass, capitalize } from '@/lib/utils';
 import type { Item } from '@/components/ItemCard';
@@ -30,6 +31,7 @@ function ItemDetail() {
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
   const [successBanner, setSuccessBanner] = useState(searchParams.get('success') === '1');
+  const { userId } = useAuth();
 
   useEffect(() => {
     async function fetchItem() {
@@ -157,7 +159,7 @@ function ItemDetail() {
               </div>
 
               {/* Action — Message the person who reported this item */}
-              {item.status !== 'closed' && item.user_id && (
+              {item.status !== 'closed' && item.user_id && userId !== item.user_id && (
                 <button
                   id="contact-finder-btn"
                   className="btn btn-primary"
