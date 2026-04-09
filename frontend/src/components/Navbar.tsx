@@ -107,9 +107,9 @@ export default function Navbar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
           {isSignedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {user?.primaryEmailAddress && (
+              {(user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress) && (
                 <span className="hidden-mobile" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  {user.primaryEmailAddress.emailAddress}
+                  {user.fullName || user.username || user.primaryEmailAddress?.emailAddress}
                 </span>
               )}
               <UserButton
