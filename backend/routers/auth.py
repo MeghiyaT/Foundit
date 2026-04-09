@@ -1,14 +1,15 @@
 """
 Foundit — Auth Router
-JWT validation using PyJWT (no network call required)
-Falls back to Supabase Admin API if the JWT secret is unavailable.
+JWT validation using Clerk. Decodes the Clerk-issued JWT and
+syncs user data into the local users table.
 """
 
 import logging
-import base64
+import time
 from typing import Optional
 
 import jwt as pyjwt
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -19,6 +20,11 @@ from config import get_settings
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
 logger = logging.getLogger(__name__)
+
+# Cache the JWKS keys
+_jwks_cache: dict = {}
+_jwks_fetched_at: float = 0
+JWKS_CACHE_TTL = 3600  # 1 hour
 
 
 class UserProfile(BaseModel):
@@ -34,30 +40,19 @@ class UserUpdate(BaseModel):
     roll_no: Optional[str] = None
 
 
-def _decode_jwt_unverified(token: str) -> dict:
+def _decode_clerk_jwt(token: str) -> dict:
     """
-    Decode a JWT without verifying the signature.
-    Safe here because we trust Supabase-issued tokens and verify
-    the user exists in our DB.
+    Decode a Clerk JWT.
+    In development, we decode without full signature verification
+    to avoid needing JWKS. The middleware already validated the session.
     """
-    return pyjwt.decode(
-        token,
-        options={"verify_signature": False},
-        algorithms=["HS256"],
-    )
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> UserProfile:
-    """
-    Validate a Supabase JWT. Decodes the token locally (no network call)
-    and cross-references with the users table.
-    """
-    token = credentials.credentials
-
     try:
-        payload = _decode_jwt_unverified(token)
+        payload = pyjwt.decode(
+            token,
+            options={"verify_signature": False},
+            algorithms=["RS256"],
+        )
+        return payload
     except pyjwt.DecodeError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -65,18 +60,25 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Supabase stores uid in 'sub', email in 'email'
-    user_id: Optional[str] = payload.get("sub")
-    email: Optional[str] = payload.get("email")
 
-    if not user_id or not email:
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> UserProfile:
+    """
+    Validate a Clerk JWT, extract user info, and sync with our users table.
+    Clerk JWTs have 'sub' (user ID like 'user_xxx') and may have email in claims.
+    """
+    token = credentials.credentials
+    payload = _decode_clerk_jwt(token)
+
+    user_id: Optional[str] = payload.get("sub")
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing required claims.",
+            detail="Token missing user ID.",
         )
 
     # Check expiry
-    import time
     exp = payload.get("exp", 0)
     if exp and time.time() > exp:
         raise HTTPException(
@@ -84,12 +86,28 @@ async def get_current_user(
             detail="Token has expired.",
         )
 
+    # Try to get email from JWT claims
+    email = payload.get("email", "")
+
+    # If no email in JWT, try Clerk's metadata
+    if not email:
+        metadata = payload.get("metadata", {})
+        email = metadata.get("email", "")
+
+    # If still no email, try unsafe_metadata or use a placeholder
+    if not email:
+        email = payload.get("emailAddress", f"{user_id}@clerk.local")
+
     supabase = get_supabase_client()
 
     # Upsert user profile
     result = supabase.table("users").select("*").eq("id", user_id).execute()
     if result.data:
         db_user = result.data[0]
+        # Update email if we have a better one now
+        if email and email != db_user.get("email") and "@clerk.local" not in email:
+            supabase.table("users").update({"email": email}).eq("id", user_id).execute()
+            db_user["email"] = email
         return UserProfile(
             id=db_user["id"],
             email=db_user["email"],

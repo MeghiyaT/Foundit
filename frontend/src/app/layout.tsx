@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const inter = Inter({
@@ -11,7 +12,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Foundit — Smart Lost & Found",
   description:
-    "Campus lost and found reimagined. Post a photo, our AI finds your match. Verified handover with OTP.",
+    "Campus lost and found reimagined. Post a photo, our AI finds your match.",
   openGraph: {
     title: "Foundit — Smart Lost & Found",
     description: "AI-powered campus lost and found platform.",
@@ -25,8 +26,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="min-h-screen flex flex-col">{children}</body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={inter.variable}>
+        <body className="min-h-screen flex flex-col">{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }

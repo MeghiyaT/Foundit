@@ -1,55 +1,38 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@clerk/nextjs';
+import { useEffect } from 'react';
+import { setAuthToken } from '@/lib/api';
 
-interface Props {
-  children: React.ReactNode;
-  adminOnly?: boolean;
-}
-
-export default function AuthGuard({ children, adminOnly = false }: Props) {
-  const router = useRouter();
-  const [status, setStatus] = useState<'loading' | 'auth' | 'unauth'>('loading');
+/**
+ * AuthGuard — syncs the Clerk token into the API client
+ * and shows a loading state while authentication initializes.
+ */
+export default function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.replace('/login');
-        setStatus('unauth');
+    async function syncToken() {
+      if (isSignedIn) {
+        const token = await getToken();
+        setAuthToken(token);
       } else {
-        setStatus('auth');
+        setAuthToken(null);
       }
-    });
+    }
+    if (isLoaded) syncToken();
+  }, [isLoaded, isSignedIn, getToken]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) {
-        router.replace('/login');
-        setStatus('unauth');
-      } else {
-        setStatus('auth');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router]);
-
-  if (status === 'loading') {
+  if (!isLoaded) {
     return (
       <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        minHeight: '60vh',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '60vh', background: 'var(--bg-primary)',
       }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner" style={{ margin: '0 auto 16px' }} />
-          <p className="text-body-sm" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
-        </div>
+        <div className="spinner" style={{ width: 32, height: 32 }} />
       </div>
     );
   }
-
-  if (status === 'unauth') return null;
 
   return <>{children}</>;
 }

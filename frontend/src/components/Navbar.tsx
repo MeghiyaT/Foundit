@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-import type { User } from '@supabase/supabase-js';
+import { usePathname } from 'next/navigation';
+import { useUser, useAuth, UserButton, SignInButton } from '@clerk/nextjs';
 
 const NAV_LINKS = [
   { href: '/', label: 'Browse' },
@@ -15,47 +14,16 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const { isSignedIn } = useAuth();
+  const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
-  // Close user menu on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUserMenuOpen(false);
-    router.push('/login');
-  };
-
-  const avatarLetter = user?.email?.charAt(0).toUpperCase() ?? '?';
 
   return (
     <header
@@ -136,86 +104,28 @@ export default function Navbar() {
 
         {/* Right side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
-          {user ? (
-            <div ref={userMenuRef} style={{ position: 'relative' }}>
-              <button
-                id="user-avatar-btn"
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-                style={{
-                  width: 36, height: 36,
-                  background: 'var(--accent)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '50%',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'opacity 150ms ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >
-                {avatarLetter}
-              </button>
-              {userMenuOpen && (
-                <div
-                  className="animate-slide-down"
-                  style={{
-                    position: 'absolute', right: 0, top: 'calc(100% + 8px)',
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-md)',
-                    boxShadow: 'var(--shadow-lg)',
-                    minWidth: 200,
-                    overflow: 'hidden',
-                    zIndex: 200,
-                  }}
-                >
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>
-                      {user.email}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Student</div>
-                  </div>
-                  <div style={{ padding: 4 }}>
-                    <Link
-                      href="/admin"
-                      onClick={() => setUserMenuOpen(false)}
-                      style={{
-                        display: 'block', padding: '8px 12px',
-                        fontSize: 14, color: 'var(--text-primary)',
-                        textDecoration: 'none', borderRadius: 6,
-                        transition: 'background 150ms ease',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-surface-hover)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      Admin Dashboard
-                    </Link>
-                    <button
-                      id="sign-out-btn"
-                      onClick={handleSignOut}
-                      style={{
-                        display: 'block', width: '100%', textAlign: 'left',
-                        padding: '8px 12px', fontSize: 14,
-                        color: 'var(--danger)', background: 'none',
-                        border: 'none', cursor: 'pointer', borderRadius: 6,
-                        transition: 'background 150ms ease',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--danger-subtle)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      Sign out
-                    </button>
-                  </div>
-                </div>
+          {isSignedIn ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {user?.primaryEmailAddress && (
+                <span className="hidden-mobile" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  {user.primaryEmailAddress.emailAddress}
+                </span>
               )}
+              <UserButton
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox: { width: 36, height: 36 },
+                  },
+                }}
+              />
             </div>
           ) : (
-            <Link href="/login" className="btn btn-primary" style={{ padding: '8px 20px', fontSize: 14 }}>
-              Sign in
-            </Link>
+            <SignInButton mode="modal">
+              <button className="btn btn-primary" style={{ padding: '8px 20px', fontSize: 14 }}>
+                Sign in
+              </button>
+            </SignInButton>
           )}
 
           {/* Mobile hamburger */}
@@ -278,7 +188,8 @@ export default function Navbar() {
           .show-mobile { display: block !important; }
           #mobile-menu-btn { display: block !important; }
         }
-      `}</style>
+      `}
+      </style>
     </header>
   );
 }
