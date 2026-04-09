@@ -1,19 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
-import { supabase } from '@/lib/supabaseClient';
 
 export default function HomePage() {
-  const [userEmail, setUserEmail] = useState('');
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUserEmail(session?.user?.email ?? '');
-    });
-  }, []);
+  const { isSignedIn } = useAuth();
 
   return (
     <>
@@ -116,12 +109,11 @@ export default function HomePage() {
                   },
                   {
                     step: '03',
-                    title: 'Verify & collect',
-                    desc: 'Claim your item, verify identity via OTP email, and pick it up from the security office.',
+                    title: 'Message & collect',
+                    desc: 'Contact the person directly through our messaging system and arrange the handover.',
                     icon: (
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                        <polyline points="22 4 12 14.01 9 11.01"/>
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                       </svg>
                     ),
                     color: 'var(--success)',

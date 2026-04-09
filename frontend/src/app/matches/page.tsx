@@ -106,7 +106,7 @@ export default function MatchesPage() {
                           <div key={label} style={{ padding: 20, display: 'flex', gap: 14, alignItems: 'flex-start', background: idx === 1 ? 'var(--bg-surface-hover)' : 'transparent' }}>
                             {it?.image_url && (
                               <div style={{ width: 72, height: 72, borderRadius: 'var(--radius-md)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-                                <Image src={it.image_url} alt={it.title} fill style={{ objectFit: 'cover' }} />
+                                <Image src={it.image_url} alt={it.title} fill sizes="72px" style={{ objectFit: 'cover' }} />
                               </div>
                             )}
                             <div>
