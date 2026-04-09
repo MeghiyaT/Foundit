@@ -15,6 +15,7 @@ export interface Item {
   status: 'open' | 'matched' | 'closed';
   date_reported?: string;
   created_at: string;
+  user_id?: string;
 }
 
 interface Props {
