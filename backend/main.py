@@ -5,7 +5,7 @@ Foundit — FastAPI Application Entry Point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
-from routers import auth, items, matches, claims, admin
+from routers import auth, items, matches, messages, admin
 
 settings = get_settings()
 
@@ -32,7 +32,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(items.router)
 app.include_router(matches.router)
-app.include_router(claims.router)
+app.include_router(messages.router)
 app.include_router(admin.router)
 
 

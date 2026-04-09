@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { href: '/', label: 'Browse' },
   { href: '/report', label: 'Report Item' },
   { href: '/matches', label: 'My Matches' },
+  { href: '/messages', label: 'Messages' },
 ];
 
 export default function Navbar() {
