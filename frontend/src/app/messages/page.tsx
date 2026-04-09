@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
-import api from '@/lib/api';
+import api, { setAuthToken } from '@/lib/api';
+import { useAuth } from '@clerk/nextjs';
 
 interface Conversation {
   id: string;
