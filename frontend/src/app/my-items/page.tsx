@@ -6,6 +6,7 @@ import AuthGuard from '@/components/AuthGuard';
 import ItemCard, { type Item } from '@/components/ItemCard';
 import api from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
+import { setAuthToken } from '@/lib/api';
 import Link from 'next/link';
 
 function ItemSkeleton() {
@@ -23,7 +24,7 @@ function ItemSkeleton() {
 }
 
 export default function MyItemsPage() {
-  const { userId, isLoaded } = useAuth();
+  const { userId, isLoaded, getToken } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'lost' | 'found'>('lost');
@@ -32,6 +33,8 @@ export default function MyItemsPage() {
     if (!userId) return;
     setLoading(true);
     try {
+      const token = await getToken();
+      setAuthToken(token);
       const { data } = await api.get(`/items?user_id=${userId}&type=${tab}&limit=50`);
       setItems(data.items || data);
     } catch {
@@ -39,7 +42,7 @@ export default function MyItemsPage() {
     } finally {
       setLoading(false);
     }
-  }, [userId, tab]);
+  }, [userId, tab, getToken]);
 
   useEffect(() => {
     if (isLoaded) {

@@ -36,27 +36,30 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState('');
   const [otherUser, setOtherUser] = useState<{ email: string; name?: string } | null>(null);
+  const { userId, isLoaded: authLoaded, getToken } = useAuth();
   const threadEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
+      if (!authLoaded || !userId) return;
+      
+      setLoading(true);
       try {
-        // Get current user
-        const { data: user } = await api.post('/auth/verify');
-        setCurrentUserId(user.id);
+        const token = await getToken();
+        setAuthToken(token);
+        
         // Load conversations
         const { data } = await api.get('/messages/conversations');
         setConversations(data.conversations || []);
-      } catch {
-        // Handled by AuthGuard
+      } catch (err) {
+        console.error("Failed to load messages:", err);
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [authLoaded, userId, getToken]);
 
   const openThread = async (conv: Conversation) => {
     setSelectedConv(conv);
@@ -227,7 +230,7 @@ export default function MessagesPage() {
                         </div>
                       ) : (
                         thread.map((msg) => {
-                          const isMe = msg.sender_id === currentUserId;
+                          const isMe = msg.sender_id === userId;
                           return (
                             <div
                               key={msg.id}

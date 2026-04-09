@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { setAuthToken } from '@/lib/api';
 
 /**
@@ -10,6 +10,7 @@ import { setAuthToken } from '@/lib/api';
  */
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
+  const [synced, setSynced] = useState(false);
 
   useEffect(() => {
     async function syncToken() {
@@ -19,11 +20,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       } else {
         setAuthToken(null);
       }
+      setSynced(true);
     }
     if (isLoaded) syncToken();
   }, [isLoaded, isSignedIn, getToken]);
 
-  if (!isLoaded) {
+  if (!isLoaded || !synced) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',

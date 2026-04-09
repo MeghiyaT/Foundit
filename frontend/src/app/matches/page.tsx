@@ -7,6 +7,8 @@ import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
 import api from '@/lib/api';
 import { formatSimilarity, formatDate } from '@/lib/utils';
+import { useAuth } from '@clerk/nextjs';
+import { setAuthToken } from '@/lib/api';
 import type { Item } from '@/components/ItemCard';
 
 interface MatchWithItems {
@@ -23,12 +25,25 @@ interface MatchWithItems {
 export default function MatchesPage() {
   const [matches, setMatches] = useState<MatchWithItems[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isLoaded, userId, getToken } = useAuth();
 
   useEffect(() => {
-    api.get('/matches/mine').then(({ data }) => {
-      setMatches(data);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    async function load() {
+      if (!isLoaded || !userId) return;
+      setLoading(true);
+      try {
+        const token = await getToken();
+        setAuthToken(token);
+        const { data } = await api.get('/matches/mine');
+        setMatches(data);
+      } catch {
+        // fail silently
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [isLoaded, userId, getToken]);
 
   return (
     <>
