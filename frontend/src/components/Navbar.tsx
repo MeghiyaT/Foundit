@@ -6,7 +6,8 @@ import { usePathname } from 'next/navigation';
 import { useUser, useAuth, UserButton, SignInButton } from '@clerk/nextjs';
 
 const NAV_LINKS = [
-  { href: '/', label: 'Browse' },
+  { href: '/', label: 'Home' },
+  { href: '/items', label: 'Browse' },
   { href: '/report', label: 'Report Item' },
   { href: '/matches', label: 'My Matches' },
   { href: '/messages', label: 'Messages' },
