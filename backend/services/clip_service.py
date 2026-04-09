@@ -40,15 +40,15 @@ def _generate_embedding_sync(image_bytes: bytes) -> Optional[List[float]]:
         # Avoid local RAM usage, use HuggingFace Serverless Inference API
         try:
             logger.info("Generating embedding via HuggingFace Inference API...")
-            api_url = "https://api-inference.huggingface.co/models/sentence-transformers/clip-ViT-B-32"
-            headers = {"Authorization": f"Bearer {hf_token}"}
-            # HF API often accepts direct bytes for vision models or base64 for multimodal
-            import base64
-            b64_image = base64.b64encode(image_bytes).decode('utf-8')
-            payload = {"inputs": {"image": b64_image}}
+            api_url = "https://router.huggingface.co/hf-inference/models/sentence-transformers/clip-ViT-B-32"
+            headers = {
+                "Authorization": f"Bearer {hf_token}",
+                "Content-Type": "application/octet-stream"
+            }
             
             # Using httpx synchronously since we are in a ThreadPoolExecutor
-            response = httpx.post(api_url, headers=headers, json=payload, timeout=25.0)
+            # Binary byte array payload is natively supported for vision Inference endpoints
+            response = httpx.post(api_url, headers=headers, content=image_bytes, timeout=25.0)
             
             if response.status_code == 200:
                 data = response.json()
