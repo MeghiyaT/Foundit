@@ -72,7 +72,7 @@ export default function AdminPage() {
   return (
     <>
       <Navbar />
-      <AuthGuard adminOnly>
+      <AuthGuard>
         <main style={{ flex: 1, background: 'var(--bg-primary)', padding: '40px 0 80px' }}>
           <div className="container-main">
             <div style={{ marginBottom: 32 }}>
