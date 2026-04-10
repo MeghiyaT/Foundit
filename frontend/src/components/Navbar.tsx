@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: '/my-items', label: 'My Items' },
   { href: '/report', label: 'Report Item' },
   { href: '/messages', label: 'Messages' },
+  { href: '/admin', label: 'Admin' },
 ];
 
 export default function Navbar() {

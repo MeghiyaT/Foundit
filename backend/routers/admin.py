@@ -88,3 +88,25 @@ async def admin_delete_item(item_id: str, _admin: UserProfile = Depends(require_
     supabase = get_supabase_client()
     supabase.table("items").delete().eq("id", item_id).execute()
     return {"message": "Deleted."}
+
+
+@router.get("/claims")
+async def admin_list_claims(
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    _admin: UserProfile = Depends(require_admin),
+):
+    """List all claims with optional status filter — admin only."""
+    supabase = get_supabase_client()
+    query = supabase.table("claims").select("*, items(title, image_url, type), claimant:users!claimant_id(email, name), finder:users!finder_id(email, name)")
+
+    if status:
+        query = query.eq("status", status)
+
+    offset = (page - 1) * limit
+    query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+    result = query.execute()
+
+    return {"claims": result.data or [], "page": page, "limit": limit}
+

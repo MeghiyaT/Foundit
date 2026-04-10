@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     HUGGINGFACE_API_KEY: str = ""
 
+    # Blockchain contract addresses (Sepolia testnet)
+    HANDOVER_REGISTRY_ADDRESS: str = ""
+    REWARD_TOKEN_ADDRESS: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

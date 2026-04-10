@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
-import api, { setAuthToken } from '@/lib/api';
+import ClaimModal from '@/components/ClaimModal';
+import api from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
 
 interface Conversation {
@@ -29,27 +30,41 @@ interface ThreadMessage {
   created_at: string;
 }
 
+interface ThreadItem {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  user_id: string;
+  image_url?: string;
+}
+
 export default function MessagesPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [thread, setThread] = useState<ThreadMessage[]>([]);
+  const [threadItem, setThreadItem] = useState<ThreadItem | null>(null);
   const [newMsg, setNewMsg] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
   const [otherUser, setOtherUser] = useState<{ email: string; name?: string } | null>(null);
+  const [showClaimModal, setShowClaimModal] = useState(false);
   const { userId, isLoaded: authLoaded, getToken } = useAuth();
   const threadEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
       if (!authLoaded || !userId) return;
-      
+
       setLoading(true);
       try {
         const token = await getToken();
-        setAuthToken(token);
-        
+        // Set token provider for api interceptor
+        if (token) {
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+
         // Load conversations
         const { data } = await api.get('/messages/conversations');
         setConversations(data.conversations || []);
@@ -69,8 +84,10 @@ export default function MessagesPage() {
       const { data } = await api.get(`/messages/thread/${conv.item_id}/${conv.other_user_id}`);
       setThread(data.messages || []);
       setOtherUser(data.other_user);
+      setThreadItem(data.item || null);
     } catch {
       setThread([]);
+      setThreadItem(null);
     } finally {
       setLoadingThread(false);
     }
@@ -110,6 +127,23 @@ export default function MessagesPage() {
     const diffHrs = Math.floor(diffMins / 60);
     if (diffHrs < 24) return `${diffHrs}h ago`;
     return d.toLocaleDateString();
+  };
+
+  // Determine the current user's role relative to the item
+  const getUserRole = (): 'owner' | 'finder' => {
+    if (!threadItem || !userId) return 'finder';
+    return threadItem.user_id === userId ? 'owner' : 'finder';
+  };
+
+  // Can the user initiate a claim from this thread?
+  const canClaim = threadItem && threadItem.status !== 'closed';
+
+  const handleClaimComplete = () => {
+    setShowClaimModal(false);
+    // Refresh thread and item data
+    if (selectedConv) {
+      openThread(selectedConv);
+    }
   };
 
   return (
@@ -203,7 +237,7 @@ export default function MessagesPage() {
                       borderBottom: '1px solid var(--border)',
                       display: 'flex', alignItems: 'center', gap: 12,
                     }}>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
                           {selectedConv.item_title}
                         </div>
@@ -211,12 +245,33 @@ export default function MessagesPage() {
                           with {otherUser?.name || otherUser?.email || selectedConv.other_user_email}
                         </div>
                       </div>
-                      <Link
-                        href={`/items/${selectedConv.item_id}`}
-                        style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}
-                      >
-                        View item →
-                      </Link>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {/* Claim Item button */}
+                        {canClaim && (
+                          <button
+                            id="claim-item-btn"
+                            className="btn btn-primary"
+                            onClick={() => setShowClaimModal(true)}
+                            style={{ padding: '7px 16px', fontSize: 13, gap: 6 }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                            {getUserRole() === 'owner' ? 'Initiate Claim' : 'Complete Claim'}
+                          </button>
+                        )}
+                        {threadItem?.status === 'closed' && (
+                          <span className="badge badge-closed" style={{ fontSize: 12 }}>
+                            ✓ Resolved
+                          </span>
+                        )}
+                        <Link
+                          href={`/items/${selectedConv.item_id}`}
+                          style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                        >
+                          View item →
+                        </Link>
+                      </div>
                     </div>
 
                     {/* Messages area */}
@@ -296,6 +351,18 @@ export default function MessagesPage() {
 
           </div>
         </main>
+
+        {/* Claim Modal */}
+        {showClaimModal && selectedConv && threadItem && (
+          <ClaimModal
+            itemId={selectedConv.item_id}
+            itemTitle={selectedConv.item_title}
+            otherUserId={selectedConv.other_user_id}
+            role={getUserRole()}
+            onClose={() => setShowClaimModal(false)}
+            onComplete={handleClaimComplete}
+          />
+        )}
       </AuthGuard>
     </>
   );

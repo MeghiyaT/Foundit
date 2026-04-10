@@ -6,7 +6,6 @@ import AuthGuard from '@/components/AuthGuard';
 import ItemCard, { type Item } from '@/components/ItemCard';
 import api from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
-import { setAuthToken } from '@/lib/api';
 import Link from 'next/link';
 import Image from 'next/image';
 import { formatSimilarity, formatDate } from '@/lib/utils';
@@ -48,7 +47,9 @@ export default function MyItemsPage() {
     setLoading(true);
     try {
       const token = await getToken();
-      setAuthToken(token);
+      if (token) {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
       
       if (tab === 'matches') {
         const { data } = await api.get('/matches/mine');

@@ -36,6 +36,9 @@ async def list_items(
         query = query.eq("category", category)
     if status:
         query = query.eq("status", status)
+    else:
+        # By default, exclude closed items (they've been claimed/resolved)
+        query = query.neq("status", "closed")
     if search:
         query = query.ilike("title", f"%{search}%")
     if user_id:

@@ -7,6 +7,9 @@
     "test": "hardhat test",
     "deploy": "hardhat run scripts/deploy.ts --network sepolia"
   },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "hardhat": "^2.19.0",
