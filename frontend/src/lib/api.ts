@@ -8,17 +8,28 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+let tokenProvider: (() => Promise<string | null>) | null = null;
+
 /**
- * Set the Clerk session token on the API client.
- * Called from components that have access to useAuth().
+ * Register a dynamic token provider to fetch the latest token before every request.
+ * Called from components that have access to useAuth() (like AuthGuard).
  */
-export function setAuthToken(token: string | null) {
-  if (token) {
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-  } else {
-    delete api.defaults.headers.common['Authorization'];
-  }
+export function setTokenProvider(provider: () => Promise<string | null>) {
+  tokenProvider = provider;
 }
+
+// Intercept requests to dynamically inject the fresh token
+api.interceptors.request.use(async (config) => {
+  if (tokenProvider) {
+    const token = await tokenProvider();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
 
 api.interceptors.response.use(
   (response) => response,

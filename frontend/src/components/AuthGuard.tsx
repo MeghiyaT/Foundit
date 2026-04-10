@@ -2,10 +2,10 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
-import { setAuthToken } from '@/lib/api';
+import { setTokenProvider } from '@/lib/api';
 
 /**
- * AuthGuard — syncs the Clerk token into the API client
+ * AuthGuard — configures the API client to fetch the latest Clerk token
  * and shows a loading state while authentication initializes.
  */
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -13,16 +13,19 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [synced, setSynced] = useState(false);
 
   useEffect(() => {
-    async function syncToken() {
-      if (isSignedIn) {
-        const token = await getToken();
-        setAuthToken(token);
-      } else {
-        setAuthToken(null);
-      }
+    if (isLoaded) {
+      // Register the provider so the API client can fetch fresh tokens dynamically
+      setTokenProvider(async () => {
+        if (!isSignedIn) return null;
+        try {
+          return await getToken();
+        } catch (error) {
+          console.error("Error fetching auth token:", error);
+          return null;
+        }
+      });
       setSynced(true);
     }
-    if (isLoaded) syncToken();
   }, [isLoaded, isSignedIn, getToken]);
 
   if (!isLoaded || !synced) {
