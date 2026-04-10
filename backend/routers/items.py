@@ -90,10 +90,16 @@ async def create_item(
         image_bytes, image.content_type or "image/jpeg"
     )
 
-    # 2. Generate CLIP embedding in a thread pool (avoids blocking event loop)
+    # 2. Generate text embedding in a thread pool (avoids blocking event loop)
     loop = asyncio.get_event_loop()
     embedding = await loop.run_in_executor(
-        None, clip_service.generate_embedding, image_bytes
+        None,
+        lambda: clip_service.generate_embedding(
+            title=title,
+            description=description,
+            category=category,
+            location=location,
+        ),
     )
 
     # 3. Store item
