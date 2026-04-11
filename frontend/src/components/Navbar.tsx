@@ -31,7 +31,7 @@ export default function Navbar() {
 
   useEffect(() => {
     if (isSignedIn) {
-      api.get('/auth/verify')
+      api.post('/auth/verify')
         .then(({ data }) => setIsAdmin(data.role === 'admin'))
         .catch(() => setIsAdmin(false));
     } else {
