@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUser, useAuth, UserButton, SignInButton } from '@clerk/nextjs';
+import api from '@/lib/api';
 
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
@@ -20,12 +21,25 @@ export default function Navbar() {
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    if (isSignedIn) {
+      api.get('/auth/verify')
+        .then(({ data }) => setIsAdmin(data.role === 'admin'))
+        .catch(() => setIsAdmin(false));
+    } else {
+      setIsAdmin(false);
+    }
+  }, [isSignedIn]);
+
+  const visibleNavLinks = NAV_LINKS.filter(link => link.href !== '/admin' || isAdmin);
 
   return (
     <header
@@ -69,7 +83,7 @@ export default function Navbar() {
 
         {/* Desktop Nav */}
         <nav style={{ display: 'flex', gap: 4, flex: 1 }} className="hidden-mobile">
-          {NAV_LINKS.map((link) => {
+          {visibleNavLinks.map((link) => {
             const active = pathname === link.href;
             return (
               <Link
@@ -161,7 +175,7 @@ export default function Navbar() {
             background: 'var(--bg-surface)',
           }}
         >
-          {NAV_LINKS.map((link) => (
+          {visibleNavLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
