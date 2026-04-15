@@ -141,7 +141,7 @@ async def get_thread(
     all_msgs.sort(key=lambda m: m["created_at"])
 
     # Get item and user info
-    item_res = supabase.table("items").select("id, title, image_url, type").eq("id", item_id).execute()
+    item_res = supabase.table("items").select("id, title, image_url, type, status, user_id").eq("id", item_id).execute()
     user_res = supabase.table("users").select("id, email, name").eq("id", other_user_id).execute()
 
     return {

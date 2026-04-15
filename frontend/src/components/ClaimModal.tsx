@@ -52,6 +52,18 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       .catch(() => setError('Failed to load blockchain config.'));
   }, []);
 
+  // Defensive: if role detection is wrong, never let owners see finder-only steps (and vice versa).
+  useEffect(() => {
+    if (role === 'owner' && (step === 'enter_code' || step === 'blockchain')) {
+      setStep('initiate');
+      setError('');
+    }
+    if (role === 'finder' && (step === 'initiate' || step === 'waiting')) {
+      setStep('enter_code');
+      setError('');
+    }
+  }, [role, step]);
+
   // If finder, check for existing approved claims
   useEffect(() => {
     if (role === 'finder') {
@@ -266,7 +278,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         )}
 
         {/* ===== STEP: INITIATE CLAIM (Owner) ===== */}
-        {step === 'initiate' && (
+        {role === 'owner' && step === 'initiate' && (
           <>
             <div style={iconBoxStyle('var(--warning)', 'var(--warning-subtle)')}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -327,7 +339,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         )}
 
         {/* ===== STEP: WAITING FOR ADMIN (Owner sees code) ===== */}
-        {step === 'waiting' && (
+        {role === 'owner' && step === 'waiting' && (
           <>
             <div style={iconBoxStyle('var(--success)', 'var(--success-subtle)')}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -386,7 +398,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         )}
 
         {/* ===== STEP: ENTER CODE (Finder) ===== */}
-        {step === 'enter_code' && (
+        {role === 'finder' && step === 'enter_code' && (
           <>
             <div style={iconBoxStyle('var(--accent)', 'var(--accent-subtle)')}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -471,7 +483,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         )}
 
         {/* ===== STEP: BLOCKCHAIN TX IN PROGRESS ===== */}
-        {step === 'blockchain' && (
+        {role === 'finder' && step === 'blockchain' && (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <div style={{
               width: 72, height: 72,
