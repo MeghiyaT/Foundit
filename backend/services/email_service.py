@@ -37,7 +37,7 @@ def _get_resend():
 
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-FROM_EMAIL = "Foundit <notifications@foundit.app>"
+FROM_EMAIL = "Foundit <onboarding@resend.dev>"
 
 
 def _send(to: str, subject: str, html: str) -> bool:
