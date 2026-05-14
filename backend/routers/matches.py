@@ -3,34 +3,41 @@ Foundit — Matches Router
 CLIP-based match queries and admin confirmation
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from routers.auth import get_current_user, UserProfile
 from database import get_supabase_client
-from services import match_engine, clip_service
+from routers.items import _PUBLIC_ITEM_FIELDS
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
+_ITEM_EMBED = f"({_PUBLIC_ITEM_FIELDS})"
+
 
 @router.get("/item/{item_id}")
-async def get_item_matches(item_id: str):
+async def get_item_matches(item_id: UUID):
     """Get top-N AI matches for a given item."""
     supabase = get_supabase_client()
 
-    # Fetch the item
-    item_res = supabase.table("items").select("*").eq("id", item_id).execute()
+    # Fetch item type only (avoid leaking other fields)
+    item_res = supabase.table("items").select("type").eq("id", item_id).execute()
     if not item_res.data:
         raise HTTPException(status_code=404, detail="Item not found.")
-    item = item_res.data[0]
+    item_type = item_res.data[0]["type"]
 
-    # Fetch stored matches
-    if item["type"] == "lost":
-        matches_res = supabase.table("matches").select("*, found_item:items!found_item_id(*)").eq("lost_item_id", item_id).order("similarity_score", desc=True).execute()
+    # Fetch stored matches (nested items without embeddings)
+    if item_type == "lost":
+        matches_res = supabase.table("matches").select(
+            f"*, found_item:items!found_item_id{_ITEM_EMBED}"
+        ).eq("lost_item_id", item_id).order("similarity_score", desc=True).execute()
         return [
             {**m, "matched_item": m.get("found_item")}
             for m in (matches_res.data or [])
         ]
     else:
-        matches_res = supabase.table("matches").select("*, lost_item:items!lost_item_id(*)").eq("found_item_id", item_id).order("similarity_score", desc=True).execute()
+        matches_res = supabase.table("matches").select(
+            f"*, lost_item:items!lost_item_id{_ITEM_EMBED}"
+        ).eq("found_item_id", item_id).order("similarity_score", desc=True).execute()
         return [
             {**m, "matched_item": m.get("lost_item")}
             for m in (matches_res.data or [])
@@ -54,13 +61,13 @@ async def get_my_matches(user: UserProfile = Depends(get_current_user)):
 
     if lost_ids:
         res = supabase.table("matches").select(
-            "*, lost_item:items!lost_item_id(*), found_item:items!found_item_id(*)"
+            f"*, lost_item:items!lost_item_id{_ITEM_EMBED}, found_item:items!found_item_id{_ITEM_EMBED}"
         ).in_("lost_item_id", lost_ids).order("similarity_score", desc=True).execute()
         all_matches.extend(res.data or [])
 
     if found_ids:
         res = supabase.table("matches").select(
-            "*, lost_item:items!lost_item_id(*), found_item:items!found_item_id(*)"
+            f"*, lost_item:items!lost_item_id{_ITEM_EMBED}, found_item:items!found_item_id{_ITEM_EMBED}"
         ).in_("found_item_id", found_ids).order("similarity_score", desc=True).execute()
         # Avoid duplicates
         existing_ids = {m["id"] for m in all_matches}
@@ -71,7 +78,7 @@ async def get_my_matches(user: UserProfile = Depends(get_current_user)):
 
 @router.post("/{match_id}/confirm")
 async def confirm_match(
-    match_id: str,
+    match_id: UUID,
     user: UserProfile = Depends(get_current_user),
 ):
     """Admin confirms a pending match."""
@@ -93,7 +100,7 @@ async def confirm_match(
 
 @router.post("/{match_id}/reject")
 async def reject_match(
-    match_id: str,
+    match_id: UUID,
     user: UserProfile = Depends(get_current_user),
 ):
     """Admin rejects a match."""

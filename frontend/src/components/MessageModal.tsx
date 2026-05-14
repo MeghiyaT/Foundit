@@ -8,11 +8,12 @@ interface Props {
   itemTitle: string;
   receiverId: string;
   receiverEmail?: string;
+  receiverRole?: 'owner' | 'finder';
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function MessageModal({ itemId, itemTitle, receiverId, receiverEmail, onClose, onSuccess }: Props) {
+export default function MessageModal({ itemId, itemTitle, receiverId, receiverEmail, receiverRole = 'finder', onClose, onSuccess }: Props) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -76,7 +77,7 @@ export default function MessageModal({ itemId, itemTitle, receiverId, receiverEm
               id="message-modal-title"
               style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}
             >
-              Contact the finder
+              {receiverRole === 'owner' ? 'Contact the owner' : 'Contact the finder'}
             </h2>
 
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 6 }}>
@@ -91,7 +92,7 @@ export default function MessageModal({ itemId, itemTitle, receiverId, receiverEm
             {/* Message textarea */}
             <div style={{ marginBottom: 16 }}>
               <textarea
-                id="claim-message-input"
+                id="message-modal-input"
                 className="input"
                 placeholder="Hi! I think this might be mine. I lost it near the library on Monday…"
                 value={message}
@@ -149,7 +150,7 @@ export default function MessageModal({ itemId, itemTitle, receiverId, receiverEm
               Message sent!
             </h2>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              The finder has been notified. Check your messages for their reply.
+              {receiverRole === 'owner' ? 'The owner' : 'The finder'} has been notified. Check your messages for their reply.
             </p>
           </div>
         )}

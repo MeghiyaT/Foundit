@@ -28,6 +28,8 @@ export interface HandoverRegistryInterface extends Interface {
     nameOrSignature:
       | "BASE_REWARD"
       | "CLAIM_EXPIRY"
+      | "MAX_STRING_LEN"
+      | "acceptAdmin"
       | "admin"
       | "approveClaim"
       | "calculateReward"
@@ -36,7 +38,9 @@ export interface HandoverRegistryInterface extends Interface {
       | "expireClaim"
       | "finderClaimCount"
       | "getClaim"
+      | "getClaimKey"
       | "initiateClaim"
+      | "pendingAdmin"
       | "rejectClaim"
       | "rewardToken"
       | "setAdmin"
@@ -44,8 +48,11 @@ export interface HandoverRegistryInterface extends Interface {
 
   getEvent(
     nameOrSignatureOrTopic:
+      | "AdminTransferAccepted"
+      | "AdminTransferInitiated"
       | "ClaimApproved"
       | "ClaimCompleted"
+      | "ClaimExpired"
       | "ClaimInitiated"
       | "ClaimRejected"
   ): EventFragment;
@@ -58,31 +65,53 @@ export interface HandoverRegistryInterface extends Interface {
     functionFragment: "CLAIM_EXPIRY",
     values?: undefined
   ): string;
+  encodeFunctionData(
+    functionFragment: "MAX_STRING_LEN",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "acceptAdmin",
+    values?: undefined
+  ): string;
   encodeFunctionData(functionFragment: "admin", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "approveClaim",
-    values: [string]
+    values: [BytesLike]
   ): string;
   encodeFunctionData(
     functionFragment: "calculateReward",
     values: [AddressLike]
   ): string;
-  encodeFunctionData(functionFragment: "claims", values: [string]): string;
+  encodeFunctionData(functionFragment: "claims", values: [BytesLike]): string;
   encodeFunctionData(
     functionFragment: "completeClaim",
-    values: [string, string]
+    values: [BytesLike, BytesLike]
   ): string;
-  encodeFunctionData(functionFragment: "expireClaim", values: [string]): string;
+  encodeFunctionData(
+    functionFragment: "expireClaim",
+    values: [BytesLike]
+  ): string;
   encodeFunctionData(
     functionFragment: "finderClaimCount",
     values: [AddressLike]
   ): string;
-  encodeFunctionData(functionFragment: "getClaim", values: [string]): string;
+  encodeFunctionData(functionFragment: "getClaim", values: [BytesLike]): string;
+  encodeFunctionData(
+    functionFragment: "getClaimKey",
+    values: [string, AddressLike]
+  ): string;
   encodeFunctionData(
     functionFragment: "initiateClaim",
     values: [string, string, BytesLike]
   ): string;
-  encodeFunctionData(functionFragment: "rejectClaim", values: [string]): string;
+  encodeFunctionData(
+    functionFragment: "pendingAdmin",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "rejectClaim",
+    values: [BytesLike]
+  ): string;
   encodeFunctionData(
     functionFragment: "rewardToken",
     values?: undefined
@@ -98,6 +127,14 @@ export interface HandoverRegistryInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "CLAIM_EXPIRY",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "MAX_STRING_LEN",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "acceptAdmin",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "admin", data: BytesLike): Result;
@@ -124,7 +161,15 @@ export interface HandoverRegistryInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "getClaim", data: BytesLike): Result;
   decodeFunctionResult(
+    functionFragment: "getClaimKey",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "initiateClaim",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "pendingAdmin",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -138,10 +183,48 @@ export interface HandoverRegistryInterface extends Interface {
   decodeFunctionResult(functionFragment: "setAdmin", data: BytesLike): Result;
 }
 
-export namespace ClaimApprovedEvent {
-  export type InputTuple = [claimId: string, approvedBy: AddressLike];
-  export type OutputTuple = [claimId: string, approvedBy: string];
+export namespace AdminTransferAcceptedEvent {
+  export type InputTuple = [previousAdmin: AddressLike, newAdmin: AddressLike];
+  export type OutputTuple = [previousAdmin: string, newAdmin: string];
   export interface OutputObject {
+    previousAdmin: string;
+    newAdmin: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace AdminTransferInitiatedEvent {
+  export type InputTuple = [
+    currentAdmin: AddressLike,
+    pendingAdmin: AddressLike
+  ];
+  export type OutputTuple = [currentAdmin: string, pendingAdmin: string];
+  export interface OutputObject {
+    currentAdmin: string;
+    pendingAdmin: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace ClaimApprovedEvent {
+  export type InputTuple = [
+    internalKey: BytesLike,
+    claimId: string,
+    approvedBy: AddressLike
+  ];
+  export type OutputTuple = [
+    internalKey: string,
+    claimId: string,
+    approvedBy: string
+  ];
+  export interface OutputObject {
+    internalKey: string;
     claimId: string;
     approvedBy: string;
   }
@@ -153,6 +236,7 @@ export namespace ClaimApprovedEvent {
 
 export namespace ClaimCompletedEvent {
   export type InputTuple = [
+    internalKey: BytesLike,
     claimId: string,
     itemId: string,
     owner: AddressLike,
@@ -161,6 +245,7 @@ export namespace ClaimCompletedEvent {
     timestamp: BigNumberish
   ];
   export type OutputTuple = [
+    internalKey: string,
     claimId: string,
     itemId: string,
     owner: string,
@@ -169,6 +254,7 @@ export namespace ClaimCompletedEvent {
     timestamp: bigint
   ];
   export interface OutputObject {
+    internalKey: string;
     claimId: string;
     itemId: string;
     owner: string;
@@ -182,8 +268,31 @@ export namespace ClaimCompletedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace ClaimExpiredEvent {
+  export type InputTuple = [
+    internalKey: BytesLike,
+    claimId: string,
+    expiredAt: BigNumberish
+  ];
+  export type OutputTuple = [
+    internalKey: string,
+    claimId: string,
+    expiredAt: bigint
+  ];
+  export interface OutputObject {
+    internalKey: string;
+    claimId: string;
+    expiredAt: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace ClaimInitiatedEvent {
   export type InputTuple = [
+    internalKey: BytesLike,
     claimId: string,
     itemId: string,
     owner: AddressLike,
@@ -191,6 +300,7 @@ export namespace ClaimInitiatedEvent {
     expiresAt: BigNumberish
   ];
   export type OutputTuple = [
+    internalKey: string,
     claimId: string,
     itemId: string,
     owner: string,
@@ -198,6 +308,7 @@ export namespace ClaimInitiatedEvent {
     expiresAt: bigint
   ];
   export interface OutputObject {
+    internalKey: string;
     claimId: string;
     itemId: string;
     owner: string;
@@ -211,9 +322,18 @@ export namespace ClaimInitiatedEvent {
 }
 
 export namespace ClaimRejectedEvent {
-  export type InputTuple = [claimId: string, rejectedBy: AddressLike];
-  export type OutputTuple = [claimId: string, rejectedBy: string];
+  export type InputTuple = [
+    internalKey: BytesLike,
+    claimId: string,
+    rejectedBy: AddressLike
+  ];
+  export type OutputTuple = [
+    internalKey: string,
+    claimId: string,
+    rejectedBy: string
+  ];
   export interface OutputObject {
+    internalKey: string;
     claimId: string;
     rejectedBy: string;
   }
@@ -270,14 +390,22 @@ export interface HandoverRegistry extends BaseContract {
 
   CLAIM_EXPIRY: TypedContractMethod<[], [bigint], "view">;
 
+  MAX_STRING_LEN: TypedContractMethod<[], [bigint], "view">;
+
+  acceptAdmin: TypedContractMethod<[], [void], "nonpayable">;
+
   admin: TypedContractMethod<[], [string], "view">;
 
-  approveClaim: TypedContractMethod<[claimId: string], [void], "nonpayable">;
+  approveClaim: TypedContractMethod<
+    [internalKey: BytesLike],
+    [void],
+    "nonpayable"
+  >;
 
   calculateReward: TypedContractMethod<[finder: AddressLike], [bigint], "view">;
 
   claims: TypedContractMethod<
-    [arg0: string],
+    [arg0: BytesLike],
     [
       [
         string,
@@ -305,19 +433,24 @@ export interface HandoverRegistry extends BaseContract {
   >;
 
   completeClaim: TypedContractMethod<
-    [claimId: string, secret: string],
+    [internalKey: BytesLike, secretHashProof: BytesLike],
     [void],
     "nonpayable"
   >;
 
-  expireClaim: TypedContractMethod<[claimId: string], [void], "nonpayable">;
+  expireClaim: TypedContractMethod<
+    [internalKey: BytesLike],
+    [void],
+    "nonpayable"
+  >;
 
   finderClaimCount: TypedContractMethod<[arg0: AddressLike], [bigint], "view">;
 
   getClaim: TypedContractMethod<
-    [claimId: string],
+    [internalKey: BytesLike],
     [
-      [string, string, string, bigint, bigint, bigint, bigint] & {
+      [string, string, string, string, bigint, bigint, bigint, bigint] & {
+        claimId: string;
         itemId: string;
         owner: string;
         finder: string;
@@ -330,17 +463,29 @@ export interface HandoverRegistry extends BaseContract {
     "view"
   >;
 
+  getClaimKey: TypedContractMethod<
+    [claimId: string, owner: AddressLike],
+    [string],
+    "view"
+  >;
+
   initiateClaim: TypedContractMethod<
     [claimId: string, itemId: string, secretHash: BytesLike],
     [void],
     "nonpayable"
   >;
 
-  rejectClaim: TypedContractMethod<[claimId: string], [void], "nonpayable">;
+  pendingAdmin: TypedContractMethod<[], [string], "view">;
+
+  rejectClaim: TypedContractMethod<
+    [internalKey: BytesLike],
+    [void],
+    "nonpayable"
+  >;
 
   rewardToken: TypedContractMethod<[], [string], "view">;
 
-  setAdmin: TypedContractMethod<[_admin: AddressLike], [void], "nonpayable">;
+  setAdmin: TypedContractMethod<[_newAdmin: AddressLike], [void], "nonpayable">;
 
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
@@ -353,18 +498,24 @@ export interface HandoverRegistry extends BaseContract {
     nameOrSignature: "CLAIM_EXPIRY"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
+    nameOrSignature: "MAX_STRING_LEN"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
+    nameOrSignature: "acceptAdmin"
+  ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
     nameOrSignature: "admin"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "approveClaim"
-  ): TypedContractMethod<[claimId: string], [void], "nonpayable">;
+  ): TypedContractMethod<[internalKey: BytesLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "calculateReward"
   ): TypedContractMethod<[finder: AddressLike], [bigint], "view">;
   getFunction(
     nameOrSignature: "claims"
   ): TypedContractMethod<
-    [arg0: string],
+    [arg0: BytesLike],
     [
       [
         string,
@@ -393,22 +544,23 @@ export interface HandoverRegistry extends BaseContract {
   getFunction(
     nameOrSignature: "completeClaim"
   ): TypedContractMethod<
-    [claimId: string, secret: string],
+    [internalKey: BytesLike, secretHashProof: BytesLike],
     [void],
     "nonpayable"
   >;
   getFunction(
     nameOrSignature: "expireClaim"
-  ): TypedContractMethod<[claimId: string], [void], "nonpayable">;
+  ): TypedContractMethod<[internalKey: BytesLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "finderClaimCount"
   ): TypedContractMethod<[arg0: AddressLike], [bigint], "view">;
   getFunction(
     nameOrSignature: "getClaim"
   ): TypedContractMethod<
-    [claimId: string],
+    [internalKey: BytesLike],
     [
-      [string, string, string, bigint, bigint, bigint, bigint] & {
+      [string, string, string, string, bigint, bigint, bigint, bigint] & {
+        claimId: string;
         itemId: string;
         owner: string;
         finder: string;
@@ -421,6 +573,13 @@ export interface HandoverRegistry extends BaseContract {
     "view"
   >;
   getFunction(
+    nameOrSignature: "getClaimKey"
+  ): TypedContractMethod<
+    [claimId: string, owner: AddressLike],
+    [string],
+    "view"
+  >;
+  getFunction(
     nameOrSignature: "initiateClaim"
   ): TypedContractMethod<
     [claimId: string, itemId: string, secretHash: BytesLike],
@@ -428,15 +587,32 @@ export interface HandoverRegistry extends BaseContract {
     "nonpayable"
   >;
   getFunction(
+    nameOrSignature: "pendingAdmin"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
     nameOrSignature: "rejectClaim"
-  ): TypedContractMethod<[claimId: string], [void], "nonpayable">;
+  ): TypedContractMethod<[internalKey: BytesLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "rewardToken"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "setAdmin"
-  ): TypedContractMethod<[_admin: AddressLike], [void], "nonpayable">;
+  ): TypedContractMethod<[_newAdmin: AddressLike], [void], "nonpayable">;
 
+  getEvent(
+    key: "AdminTransferAccepted"
+  ): TypedContractEvent<
+    AdminTransferAcceptedEvent.InputTuple,
+    AdminTransferAcceptedEvent.OutputTuple,
+    AdminTransferAcceptedEvent.OutputObject
+  >;
+  getEvent(
+    key: "AdminTransferInitiated"
+  ): TypedContractEvent<
+    AdminTransferInitiatedEvent.InputTuple,
+    AdminTransferInitiatedEvent.OutputTuple,
+    AdminTransferInitiatedEvent.OutputObject
+  >;
   getEvent(
     key: "ClaimApproved"
   ): TypedContractEvent<
@@ -450,6 +626,13 @@ export interface HandoverRegistry extends BaseContract {
     ClaimCompletedEvent.InputTuple,
     ClaimCompletedEvent.OutputTuple,
     ClaimCompletedEvent.OutputObject
+  >;
+  getEvent(
+    key: "ClaimExpired"
+  ): TypedContractEvent<
+    ClaimExpiredEvent.InputTuple,
+    ClaimExpiredEvent.OutputTuple,
+    ClaimExpiredEvent.OutputObject
   >;
   getEvent(
     key: "ClaimInitiated"
@@ -467,7 +650,29 @@ export interface HandoverRegistry extends BaseContract {
   >;
 
   filters: {
-    "ClaimApproved(string,address)": TypedContractEvent<
+    "AdminTransferAccepted(address,address)": TypedContractEvent<
+      AdminTransferAcceptedEvent.InputTuple,
+      AdminTransferAcceptedEvent.OutputTuple,
+      AdminTransferAcceptedEvent.OutputObject
+    >;
+    AdminTransferAccepted: TypedContractEvent<
+      AdminTransferAcceptedEvent.InputTuple,
+      AdminTransferAcceptedEvent.OutputTuple,
+      AdminTransferAcceptedEvent.OutputObject
+    >;
+
+    "AdminTransferInitiated(address,address)": TypedContractEvent<
+      AdminTransferInitiatedEvent.InputTuple,
+      AdminTransferInitiatedEvent.OutputTuple,
+      AdminTransferInitiatedEvent.OutputObject
+    >;
+    AdminTransferInitiated: TypedContractEvent<
+      AdminTransferInitiatedEvent.InputTuple,
+      AdminTransferInitiatedEvent.OutputTuple,
+      AdminTransferInitiatedEvent.OutputObject
+    >;
+
+    "ClaimApproved(bytes32,string,address)": TypedContractEvent<
       ClaimApprovedEvent.InputTuple,
       ClaimApprovedEvent.OutputTuple,
       ClaimApprovedEvent.OutputObject
@@ -478,7 +683,7 @@ export interface HandoverRegistry extends BaseContract {
       ClaimApprovedEvent.OutputObject
     >;
 
-    "ClaimCompleted(string,string,address,address,uint256,uint256)": TypedContractEvent<
+    "ClaimCompleted(bytes32,string,string,address,address,uint256,uint256)": TypedContractEvent<
       ClaimCompletedEvent.InputTuple,
       ClaimCompletedEvent.OutputTuple,
       ClaimCompletedEvent.OutputObject
@@ -489,7 +694,18 @@ export interface HandoverRegistry extends BaseContract {
       ClaimCompletedEvent.OutputObject
     >;
 
-    "ClaimInitiated(string,string,address,bytes32,uint256)": TypedContractEvent<
+    "ClaimExpired(bytes32,string,uint256)": TypedContractEvent<
+      ClaimExpiredEvent.InputTuple,
+      ClaimExpiredEvent.OutputTuple,
+      ClaimExpiredEvent.OutputObject
+    >;
+    ClaimExpired: TypedContractEvent<
+      ClaimExpiredEvent.InputTuple,
+      ClaimExpiredEvent.OutputTuple,
+      ClaimExpiredEvent.OutputObject
+    >;
+
+    "ClaimInitiated(bytes32,string,string,address,bytes32,uint256)": TypedContractEvent<
       ClaimInitiatedEvent.InputTuple,
       ClaimInitiatedEvent.OutputTuple,
       ClaimInitiatedEvent.OutputObject
@@ -500,7 +716,7 @@ export interface HandoverRegistry extends BaseContract {
       ClaimInitiatedEvent.OutputObject
     >;
 
-    "ClaimRejected(string,address)": TypedContractEvent<
+    "ClaimRejected(bytes32,string,address)": TypedContractEvent<
       ClaimRejectedEvent.InputTuple,
       ClaimRejectedEvent.OutputTuple,
       ClaimRejectedEvent.OutputObject

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 HF_MODEL = "BAAI/bge-small-en-v1.5"
 HF_API_URL = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}"
 HF_EMBEDDING_DIM = 384
-DB_EMBEDDING_DIM = 512  # Existing pgvector column is 512-dim
+DB_EMBEDDING_DIM = 384  # pgvector column is 384-dim (migration 006)
 
 
 def _build_item_text(title: str, description: str = "", category: str = "", location: str = "") -> str:
@@ -41,8 +41,8 @@ def _build_item_text(title: str, description: str = "", category: str = "", loca
 
 def generate_text_embedding(text: str) -> Optional[List[float]]:
     """
-    Generate a 512-dimensional embedding from text using HuggingFace API.
-    The model outputs 384 dims which are zero-padded to 512 to match the DB.
+    Generate a 384-dimensional embedding from text using HuggingFace API.
+    The model outputs 384 dims — directly compatible with the DB column.
     Returns None on failure (so item is still saved without embedding).
     """
     from config import get_settings
@@ -76,11 +76,15 @@ def generate_text_embedding(text: str) -> Optional[List[float]]:
                     raw_embedding = data[0]
                 
                 if raw_embedding is not None:
-                    # Zero-pad to 512 dims to match existing DB column
-                    if len(raw_embedding) < DB_EMBEDDING_DIM:
-                        raw_embedding = raw_embedding + [0.0] * (DB_EMBEDDING_DIM - len(raw_embedding))
-                    logger.info(f"Embedding generated: {len(raw_embedding)} dims for text '{text[:50]}...'")
-                    return raw_embedding
+                    # Verify embedding dimension matches expected HF output
+                    if len(raw_embedding) != HF_EMBEDDING_DIM:
+                        logger.error(f"Embedding dimension mismatch: got {len(raw_embedding)}, expected {HF_EMBEDDING_DIM}")
+                        return None
+                    
+                    # Zero-pad to 512 dimensions for the database
+                    padded_embedding = raw_embedding + [0.0] * (512 - len(raw_embedding))
+                    logger.info(f"Embedding generated and padded: {len(padded_embedding)} dims for text '{text[:50]}...'")
+                    return padded_embedding
             logger.error(f"HF API unexpected response format: {type(data)}")
             return None
         elif response.status_code == 503:
@@ -98,9 +102,11 @@ def generate_text_embedding(text: str) -> Optional[List[float]]:
                     elif isinstance(data[0], list):
                         raw_embedding = data[0]
                     if raw_embedding is not None:
-                        if len(raw_embedding) < DB_EMBEDDING_DIM:
-                            raw_embedding = raw_embedding + [0.0] * (DB_EMBEDDING_DIM - len(raw_embedding))
-                        return raw_embedding
+                        if len(raw_embedding) != HF_EMBEDDING_DIM:
+                            logger.error(f"Embedding dimension mismatch: got {len(raw_embedding)}, expected {HF_EMBEDDING_DIM}")
+                            return None
+                        padded_embedding = raw_embedding + [0.0] * (512 - len(raw_embedding))
+                        return padded_embedding
             logger.error(f"HF API retry failed: {response.status_code}")
             return None
         else:

@@ -1,15 +1,15 @@
 """
 Foundit — Auth Router
-JWT validation using Clerk. Decodes the Clerk-issued JWT and
-syncs user data into the local users table.
+JWT validation using Clerk. Verifies RS256 signatures via Clerk JWKS,
+then syncs user data into the local users table.
 """
 
 import logging
 import time
 from typing import Optional
 
-import jwt as pyjwt
-import httpx
+from jwt import PyJWKClient, decode as jwt_decode
+from jwt.exceptions import PyJWTError, PyJWKClientError
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -21,10 +21,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
 logger = logging.getLogger(__name__)
 
-# Cache the JWKS keys
-_jwks_cache: dict = {}
-_jwks_fetched_at: float = 0
-JWKS_CACHE_TTL = 3600  # 1 hour
+_jwks_clients: dict[str, PyJWKClient] = {}
+_insecure_warned = False
 
 
 class UserProfile(BaseModel):
@@ -40,25 +38,78 @@ class UserUpdate(BaseModel):
     roll_no: Optional[str] = None
 
 
+def _jwks_client_for_issuer(issuer: str) -> PyJWKClient:
+    issuer = issuer.rstrip("/")
+    if issuer not in _jwks_clients:
+        jwks_url = f"{issuer}/.well-known/jwks.json"
+        _jwks_clients[issuer] = PyJWKClient(jwks_url)
+    return _jwks_clients[issuer]
+
+
 def _decode_clerk_jwt(token: str) -> dict:
-    """
-    Decode a Clerk JWT.
-    In development, we decode without full signature verification
-    to avoid needing JWKS. The middleware already validated the session.
-    """
-    try:
-        payload = pyjwt.decode(
-            token,
-            options={"verify_signature": False},
-            algorithms=["RS256"],
-        )
-        return payload
-    except pyjwt.DecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token format.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    settings = get_settings()
+    issuer = (settings.CLERK_ISSUER or "").strip().rstrip("/")
+
+    if issuer:
+        try:
+            jwks_client = _jwks_client_for_issuer(issuer)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            return jwt_decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256"],
+                issuer=issuer,
+                options={"verify_aud": False},
+            )
+        except PyJWKClientError as e:
+            logger.error("Failed to fetch Clerk JWKS: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to reach authentication service. Please try again.",
+            ) from e
+        except PyJWTError as e:
+            logger.debug("Clerk JWT verification failed: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from e
+        except Exception as e:
+            logger.error("Unexpected error during JWT verification: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service temporarily unavailable.",
+            ) from e
+
+    if settings.CLERK_JWT_INSECURE_NO_VERIFY:
+        global _insecure_warned
+        if not _insecure_warned:
+            logger.warning(
+                "CLERK_JWT_INSECURE_NO_VERIFY is enabled and CLERK_ISSUER is unset — "
+                "JWT signatures are not verified. Set CLERK_ISSUER for production."
+            )
+            _insecure_warned = True
+        try:
+            return jwt_decode(
+                token,
+                options={"verify_signature": False},
+                algorithms=["RS256"],
+            )
+        except PyJWTError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token format.",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from e
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=(
+            "Authentication is not configured: set CLERK_ISSUER to your Clerk "
+            "Frontend API URL (see Clerk Dashboard → API Keys), or for local "
+            "development only set CLERK_JWT_INSECURE_NO_VERIFY=true."
+        ),
+    )
 
 
 async def get_current_user(
@@ -78,7 +129,7 @@ async def get_current_user(
             detail="Token missing user ID.",
         )
 
-    # Check expiry
+    # Check expiry (jwt_decode with verify_exp default True already checked; keep for insecure path)
     exp = payload.get("exp", 0)
     if exp and time.time() > exp:
         raise HTTPException(
@@ -104,24 +155,49 @@ async def get_current_user(
     result = supabase.table("users").select("*").eq("id", user_id).execute()
     if result.data:
         db_user = result.data[0]
+
+        # Defensive: repair missing required fields silently (fixes 500 on malformed rows)
+        if "email" not in db_user or not db_user.get("email"):
+            logger.warning("User %s exists but email is missing – repairing.", user_id)
+            db_user["email"] = email
+            supabase.table("users").update({"email": email}).eq("id", user_id).execute()
+        if "role" not in db_user or not db_user.get("role"):
+            db_user["role"] = "student"
+
         # Update email if we have a better one now
         if email and email != db_user.get("email") and "@clerk.local" not in email:
-            supabase.table("users").update({"email": email}).eq("id", user_id).execute()
-            db_user["email"] = email
+            try:
+                supabase.table("users").update({"email": email}).eq("id", user_id).execute()
+                db_user["email"] = email
+            except Exception:
+                logger.warning("Could not update email for %s (duplicate or conflict)", user_id)
         return UserProfile(
-            id=db_user["id"],
-            email=db_user["email"],
+            id=db_user.get("id", user_id),
+            email=db_user.get("email", email),
             name=db_user.get("name"),
             roll_no=db_user.get("roll_no"),
             role=db_user.get("role", "student"),
         )
     else:
         # First login — create user record
-        supabase.table("users").insert({
-            "id": user_id,
-            "email": email,
-            "role": "student",
-        }).execute()
+        try:
+            supabase.table("users").insert({
+                "id": user_id,
+                "email": email,
+                "role": "student",
+            }).execute()
+        except Exception:
+            logger.warning("Insert failed for %s — may already exist, fetching", user_id)
+            result = supabase.table("users").select("*").eq("id", user_id).execute()
+            if result.data:
+                d = result.data[0]
+                return UserProfile(
+                    id=d.get("id", user_id),
+                    email=d.get("email", email),
+                    name=d.get("name"),
+                    roll_no=d.get("roll_no"),
+                    role=d.get("role", "student"),
+                )
         return UserProfile(id=user_id, email=email, role="student")
 
 
@@ -146,8 +222,8 @@ async def update_profile(
     if result.data:
         d = result.data[0]
         return UserProfile(
-            id=d["id"],
-            email=d["email"],
+            id=d.get("id", user.id),
+            email=d.get("email", user.email),
             name=d.get("name"),
             roll_no=d.get("roll_no"),
             role=d.get("role", "student"),

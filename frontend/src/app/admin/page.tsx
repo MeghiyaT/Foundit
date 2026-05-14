@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
 import api from '@/lib/api';
@@ -80,26 +80,33 @@ export default function AdminPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
 
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  const fetchItems = useCallback(async (status = statusFilter) => {
+    const params = status ? `?status=${status}` : '';
+    const { data } = await api.get(`/admin/items${params}`);
+    setItems(data.items || []);
+  }, [statusFilter]);
+
+  const fetchClaims = useCallback(async (status = claimStatusFilter) => {
+    const params = status ? `?status=${status}` : '';
+    const { data } = await api.get(`/admin/claims${params}`);
+    setClaims(data.claims || []);
+  }, [claimStatusFilter]);
+
   useEffect(() => {
     Promise.all([
       api.get('/admin/stats').then((r) => setStats(r.data)),
       fetchItems(),
       fetchClaims(),
     ]).catch(() => setError('Failed to load admin data. Are you an admin?')).finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function fetchItems(status = statusFilter) {
-    const params = status ? `?status=${status}` : '';
-    const { data } = await api.get(`/admin/items${params}`);
-    setItems(data.items || []);
-  }
-
-  async function fetchClaims(status = claimStatusFilter) {
-    const params = status ? `?status=${status}` : '';
-    const { data } = await api.get(`/admin/claims${params}`);
-    setClaims(data.claims || []);
-  }
+  }, [fetchItems, fetchClaims]);
 
   async function closeItem(itemId: string) {
     setActionLoading(itemId);
@@ -109,11 +116,17 @@ export default function AdminPage() {
   }
 
   async function deleteItem(itemId: string) {
-    if (!confirm('Delete this item permanently?')) return;
-    setActionLoading(itemId);
-    await api.delete(`/admin/items/${itemId}`);
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-    setActionLoading(null);
+    setConfirmModal({
+      message: 'Delete this item permanently?',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setActionLoading(itemId);
+        await api.delete(`/admin/items/${itemId}`);
+        setItems((prev) => prev.filter((i) => i.id !== itemId));
+        setActionLoading(null);
+        showToast('Item deleted successfully.', 'success');
+      },
+    });
   }
 
   async function approveClaim(claimId: string) {
@@ -121,26 +134,33 @@ export default function AdminPage() {
     try {
       await api.post(`/claims/${claimId}/approve`);
       setClaims((prev) => prev.map((c) => c.id === claimId ? { ...c, status: 'approved' } : c));
+      showToast('Claim approved.', 'success');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      alert(detail || 'Failed to approve claim.');
+      showToast(detail || 'Failed to approve claim.', 'error');
     } finally {
       setActionLoading(null);
     }
   }
 
   async function rejectClaim(claimId: string) {
-    if (!confirm('Reject this claim? The users will need to initiate a new one.')) return;
-    setActionLoading(claimId);
-    try {
-      await api.post(`/claims/${claimId}/reject`);
-      setClaims((prev) => prev.map((c) => c.id === claimId ? { ...c, status: 'rejected' } : c));
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      alert(detail || 'Failed to reject claim.');
-    } finally {
-      setActionLoading(null);
-    }
+    setConfirmModal({
+      message: 'Reject this claim? The users will need to initiate a new one.',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setActionLoading(claimId);
+        try {
+          await api.post(`/claims/${claimId}/reject`);
+          setClaims((prev) => prev.map((c) => c.id === claimId ? { ...c, status: 'rejected' } : c));
+          showToast('Claim rejected.', 'success');
+        } catch (err: unknown) {
+          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          showToast(detail || 'Failed to reject claim.', 'error');
+        } finally {
+          setActionLoading(null);
+        }
+      },
+    });
   }
 
   const tabStyle = (isActive: boolean): React.CSSProperties => ({
@@ -396,6 +416,64 @@ export default function AdminPage() {
           </div>
         </main>
       </AuthGuard>
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed',
+            bottom: 32,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 600,
+            padding: '12px 24px',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 14,
+            fontWeight: 600,
+            color: 'white',
+            background: toast.type === 'success' ? 'var(--success)' : 'var(--danger)',
+            boxShadow: 'var(--shadow-lg)',
+            animation: 'fadeInUp 0.2s ease',
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
+
+      {/* Confirm modal */}
+      {confirmModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 550,
+            background: 'var(--bg-overlay)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+          onClick={() => setConfirmModal(null)}
+        >
+          <div
+            className="card animate-fade-in-up"
+            style={{ maxWidth: 400, width: '100%', padding: 28 }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div style={{ fontSize: 40, marginBottom: 12, textAlign: 'center' }}>⚠️</div>
+            <p style={{ fontSize: 15, color: 'var(--text-primary)', textAlign: 'center', marginBottom: 24, lineHeight: 1.6 }}>
+              {confirmModal.message}
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmModal(null)}>Cancel</button>
+              <button className="btn btn-danger" onClick={confirmModal.onConfirm}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

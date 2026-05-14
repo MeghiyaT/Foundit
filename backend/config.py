@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_KEY: str
 
+    # Clerk JWT (RS256) — issuer URL from Clerk Dashboard → API Keys → "Frontend API URL"
+    # Example: https://your-app.clerk.accounts.dev
+    CLERK_ISSUER: Optional[str] = None
+    # Local-only escape hatch; never enable in production
+    CLERK_JWT_INSECURE_NO_VERIFY: bool = False
+
     FRONTEND_URL: str = "http://localhost:3000"
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000

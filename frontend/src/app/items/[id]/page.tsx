@@ -30,6 +30,9 @@ function ItemDetail() {
   const [loadingItem, setLoadingItem] = useState(true);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
+  const [messageReceiverId, setMessageReceiverId] = useState<string | null>(null);
+  const [claimReceiverTitle, setClaimReceiverTitle] = useState('');
+  const [fetchError, setFetchError] = useState(false);
   const [successBanner, setSuccessBanner] = useState(searchParams.get('success') === '1');
   const { userId } = useAuth();
 
@@ -42,8 +45,13 @@ function ItemDetail() {
         setLoadingMatches(true);
         const matchRes = await api.get(`/matches/item/${id}`);
         setMatches(matchRes.data);
-      } catch {
-        // item not found — handled below
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 404) {
+          // genuine not found — leave item null
+        } else {
+          setFetchError(true);
+        }
       } finally {
         setLoadingItem(false);
         setLoadingMatches(false);
@@ -58,6 +66,12 @@ function ItemDetail() {
       return () => clearTimeout(t);
     }
   }, [successBanner]);
+
+  function openMessageModal(receiverId: string, title: string) {
+    setMessageReceiverId(receiverId);
+    setClaimReceiverTitle(title);
+    setMessageModalOpen(true);
+  }
 
   if (loadingItem) {
     return (
@@ -75,10 +89,20 @@ function ItemDetail() {
     return (
       <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 24px' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🕵️</div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Item not found</h1>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>This item may have been removed or closed.</p>
-          <Link href="/items" className="btn btn-primary">Browse items</Link>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>{fetchError ? '⚠️' : '🕵️'}</div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+            {fetchError ? 'Something went wrong' : 'Item not found'}
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
+            {fetchError
+              ? 'We couldn\'t load this item. The server may be unavailable — please try again.'
+              : 'This item may have been removed or closed.'}
+          </p>
+          {fetchError ? (
+            <button className="btn btn-primary" onClick={() => window.location.reload()}>Try again</button>
+          ) : (
+            <Link href="/items" className="btn btn-primary">Browse items</Link>
+          )}
         </div>
       </main>
     );
@@ -163,7 +187,7 @@ function ItemDetail() {
                 <button
                   id="contact-finder-btn"
                   className="btn btn-primary"
-                  onClick={() => setMessageModalOpen(true)}
+                  onClick={() => openMessageModal(item.user_id!, item.title)}
                   style={{ padding: '11px 28px', fontSize: 15, display: 'inline-flex', alignItems: 'center', gap: 8 }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -219,7 +243,13 @@ function ItemDetail() {
                     key={match.id}
                     match={match}
                     currentItem={item}
-                    onClaim={() => setMessageModalOpen(true)}
+                    onClaim={() => {
+                      const matchedUserId = match.matched_item?.user_id;
+                      const matchedTitle = match.matched_item?.title || item.title;
+                      if (matchedUserId) {
+                        openMessageModal(matchedUserId, matchedTitle);
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -228,11 +258,11 @@ function ItemDetail() {
         </div>
       </main>
 
-      {messageModalOpen && item.user_id && (
+      {messageModalOpen && messageReceiverId && (
         <MessageModal
           itemId={item.id}
-          itemTitle={item.title}
-          receiverId={item.user_id}
+          itemTitle={claimReceiverTitle || item.title}
+          receiverId={messageReceiverId}
           onClose={() => setMessageModalOpen(false)}
           onSuccess={() => {
             setMessageModalOpen(false);

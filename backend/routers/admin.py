@@ -3,10 +3,12 @@ Foundit — Admin Router
 Security office dashboard endpoints
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from routers.auth import get_current_user, UserProfile
 from database import get_supabase_client
+from routers.claims import _claim_for_response
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -73,7 +75,7 @@ async def admin_stats(_admin: UserProfile = Depends(require_admin)):
 
 
 @router.post("/items/{item_id}/close")
-async def close_item(item_id: str, _admin: UserProfile = Depends(require_admin)):
+async def close_item(item_id: UUID, _admin: UserProfile = Depends(require_admin)):
     """Admin closes an item manually."""
     supabase = get_supabase_client()
     result = supabase.table("items").update({"status": "closed"}).eq("id", item_id).execute()
@@ -83,7 +85,7 @@ async def close_item(item_id: str, _admin: UserProfile = Depends(require_admin))
 
 
 @router.delete("/items/{item_id}")
-async def admin_delete_item(item_id: str, _admin: UserProfile = Depends(require_admin)):
+async def admin_delete_item(item_id: UUID, _admin: UserProfile = Depends(require_admin)):
     """Admin deletes any item."""
     supabase = get_supabase_client()
     supabase.table("items").delete().eq("id", item_id).execute()
@@ -108,5 +110,6 @@ async def admin_list_claims(
     query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
     result = query.execute()
 
-    return {"claims": result.data or [], "page": page, "limit": limit}
+    claims = [_claim_for_response(c) for c in (result.data or [])]
+    return {"claims": claims, "page": page, "limit": limit}
 

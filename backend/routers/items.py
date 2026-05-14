@@ -3,11 +3,14 @@ Foundit — Items Router
 CRUD for lost/found items with image upload + CLIP embedding
 """
 
+import re
 import logging
 import asyncio
 from datetime import date
+from enum import Enum
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from routers.auth import get_current_user, UserProfile
 from database import get_supabase_client
 from services import storage_service, clip_service, match_engine
@@ -16,46 +19,97 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/items", tags=["items"])
 
 
+class ItemType(str, Enum):
+    lost = "lost"
+    found = "found"
+
+
+class ItemStatus(str, Enum):
+    open = "open"
+    matched = "matched"
+    closed = "closed"
+
+
+# Public item payload — excludes embedding (high-dimensional internal signal)
+_PUBLIC_ITEM_FIELDS = (
+    "id,user_id,type,title,description,category,location,image_url,status,"
+    "date_reported,created_at"
+)
+
+# Max search length to prevent abuse
+_MAX_SEARCH_LENGTH = 200
+
+
+def _sanitize_search(search: Optional[str]) -> Optional[str]:
+    """Strip SQL-special characters that cause PostgREST parsing issues."""
+    if not search:
+        return None
+    # Strip characters that are known to crash the PostgREST ilike builder
+    sanitized = re.sub(r"[';\-\-]+", " ", search)
+    sanitized = re.sub(r"\s+", " ", sanitized).strip()
+    # Enforce max length
+    if len(sanitized) > _MAX_SEARCH_LENGTH:
+        sanitized = sanitized[:_MAX_SEARCH_LENGTH]
+    return sanitized if sanitized else None
+
+
 @router.get("")
 async def list_items(
-    type: Optional[str] = Query(None),
+    request: Request,
+    type: Optional[ItemType] = Query(None),
     category: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+    status: Optional[ItemStatus] = Query(None),
+    search: Optional[str] = Query(None, max_length=500),
     user_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(12, ge=1, le=50),
 ):
     """Browse paginated items with optional filters."""
     supabase = get_supabase_client()
-    query = supabase.table("items").select("*")
 
-    if type in ("lost", "found"):
-        query = query.eq("type", type)
+    # Build query
+    query = supabase.table("items").select(_PUBLIC_ITEM_FIELDS)
+
+    if type is not None:
+        query = query.eq("type", type.value)
     if category:
         query = query.eq("category", category)
-    if status:
-        query = query.eq("status", status)
+    if status is not None:
+        query = query.eq("status", status.value)
     else:
         # By default, exclude closed items (they've been claimed/resolved)
         query = query.neq("status", "closed")
+
+    # Sanitize search input before passing to query builder (Finding #2)
     if search:
-        query = query.ilike("title", f"%{search}%")
+        search = _sanitize_search(search)
+        if search:
+            query = query.ilike("title", f"%{search}%")
+
     if user_id:
         query = query.eq("user_id", user_id)
 
     offset = (page - 1) * limit
     query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
 
-    result = query.execute()
+    # Wrap query execution in try/except to gracefully handle errors
+    try:
+        result = query.execute()
+    except Exception as e:
+        logger.error(f"Items query failed: {e}")
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid query parameters. Please check your filters and try again.",
+        )
+
     return {"items": result.data or [], "page": page, "limit": limit}
 
 
 @router.get("/{item_id}")
-async def get_item(item_id: str):
-    """Get a single item by ID."""
+async def get_item(item_id: UUID):
+    """Get a single item by ID (no embedding)."""
     supabase = get_supabase_client()
-    result = supabase.table("items").select("*").eq("id", item_id).execute()
+    result = supabase.table("items").select(_PUBLIC_ITEM_FIELDS).eq("id", item_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Item not found.")
     return result.data[0]
@@ -143,7 +197,7 @@ async def create_item(
 
 @router.put("/{item_id}/status")
 async def update_status(
-    item_id: str,
+    item_id: UUID,
     status: str = Form(...),
     user: UserProfile = Depends(get_current_user),
 ):
@@ -162,7 +216,7 @@ async def update_status(
 
 
 @router.delete("/{item_id}")
-async def delete_item(item_id: str, user: UserProfile = Depends(get_current_user)):
+async def delete_item(item_id: UUID, user: UserProfile = Depends(get_current_user)):
     """Delete an item (owner or admin only)."""
     supabase = get_supabase_client()
     item = supabase.table("items").select("user_id").eq("id", item_id).execute()

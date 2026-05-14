@@ -1,6 +1,13 @@
 /**
  * Foundit — Blockchain Integration
  * MetaMask wallet connection + HandoverRegistry + FinderRewardToken interaction
+ *
+ * Contract ABI updated to match v2 of the smart contracts:
+ *  - initiateClaim / approveClaim / rejectClaim / getClaim / expireClaim now
+ *    operate on `bytes32 internalKey` (keccak256(claimId, ownerAddress)) instead
+ *    of raw `string claimId`.
+ *  - completeClaim now takes `bytes32 secretHashProof` (keccak256 of the raw
+ *    secret, computed client-side) instead of the raw secret string.
  */
 
 import { ethers, BrowserProvider, Contract } from 'ethers';
@@ -10,17 +17,33 @@ import { ethers, BrowserProvider, Contract } from 'ethers';
 // ============================================
 
 const HANDOVER_REGISTRY_ABI = [
+  // Lifecycle
   "function initiateClaim(string claimId, string itemId, bytes32 secretHash) external",
-  "function completeClaim(string claimId, string secret) external",
-  "function approveClaim(string claimId) external",
-  "function rejectClaim(string claimId) external",
-  "function getClaim(string claimId) external view returns (string itemId, address owner, address finder, uint8 status, uint256 createdAt, uint256 expiresAt, uint256 rewardAmount)",
+  "function approveClaim(bytes32 internalKey) external",
+  "function rejectClaim(bytes32 internalKey) external",
+  "function completeClaim(bytes32 internalKey, bytes32 secretHashProof) external",
+  "function expireClaim(bytes32 internalKey) external",
+
+  // Views
+  "function getClaim(bytes32 internalKey) external view returns (string claimId, string itemId, address owner, address finder, uint8 status, uint256 createdAt, uint256 expiresAt, uint256 rewardAmount)",
+  "function getClaimKey(string claimId, address owner) external pure returns (bytes32)",
   "function calculateReward(address finder) external view returns (uint256)",
   "function finderClaimCount(address) external view returns (uint256)",
-  "event ClaimInitiated(string claimId, string itemId, address indexed owner, bytes32 secretHash, uint256 expiresAt)",
-  "event ClaimCompleted(string claimId, string itemId, address indexed owner, address indexed finder, uint256 rewardAmount, uint256 timestamp)",
-  "event ClaimApproved(string claimId, address indexed approvedBy)",
-  "event ClaimRejected(string claimId, address indexed rejectedBy)",
+
+  // Admin
+  "function setAdmin(address _newAdmin) external",
+  "function acceptAdmin() external",
+  "function admin() external view returns (address)",
+  "function pendingAdmin() external view returns (address)",
+
+  // Events
+  "event ClaimInitiated(bytes32 indexed internalKey, string claimId, string itemId, address indexed owner, bytes32 secretHash, uint256 expiresAt)",
+  "event ClaimCompleted(bytes32 indexed internalKey, string claimId, string itemId, address indexed owner, address indexed finder, uint256 rewardAmount, uint256 timestamp)",
+  "event ClaimApproved(bytes32 indexed internalKey, string claimId, address indexed approvedBy)",
+  "event ClaimRejected(bytes32 indexed internalKey, string claimId, address indexed rejectedBy)",
+  "event ClaimExpired(bytes32 indexed internalKey, string claimId, uint256 expiredAt)",
+  "event AdminTransferInitiated(address indexed currentAdmin, address indexed pendingAdmin)",
+  "event AdminTransferAccepted(address indexed previousAdmin, address indexed newAdmin)",
 ];
 
 const REWARD_TOKEN_ABI = [
@@ -29,6 +52,8 @@ const REWARD_TOKEN_ABI = [
   "function name() external view returns (string)",
   "function decimals() external view returns (uint8)",
   "function totalSupply() external view returns (uint256)",
+  "function cap() external view returns (uint256)",
+  "function minter() external view returns (address)",
 ];
 
 // ============================================
@@ -53,10 +78,21 @@ export interface WalletInfo {
 // ============================================
 
 const SEPOLIA_CHAIN_ID = 11155111;
+
+function getSepoliaRpcUrls(): string[] {
+  const customRpc = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL;
+  const fallbacks = [
+    'https://rpc2.sepolia.org',
+    'https://sepolia.gateway.tenderly.co',
+    'https://ethereum-sepolia-rpc.publicnode.com',
+  ];
+  return customRpc ? [customRpc, ...fallbacks] : fallbacks;
+}
+
 const SEPOLIA_CONFIG = {
   chainId: '0xaa36a7',  // 11155111 in hex
   chainName: 'Sepolia Testnet',
-  rpcUrls: ['https://rpc2.sepolia.org'],
+  rpcUrls: getSepoliaRpcUrls(),
   nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
   blockExplorerUrls: ['https://sepolia.etherscan.io'],
 };
@@ -113,7 +149,7 @@ export async function switchToSepolia(): Promise<void> {
 }
 
 // ============================================
-// CONTRACT INTERACTIONS
+// HELPERS
 // ============================================
 
 function getProvider(): BrowserProvider {
@@ -135,12 +171,43 @@ async function getTokenContract(config: BlockchainConfig): Promise<Contract> {
 }
 
 /**
+ * Compute the on-chain internal claim key:
+ *   keccak256(abi.encodePacked(claimId, ownerAddress))
+ *
+ * This mirrors the `getClaimKey()` pure function on the contract and must be
+ * used everywhere the contract expects a `bytes32 internalKey`.
+ */
+export function computeClaimKey(claimId: string, ownerAddress: string): string {
+  return ethers.solidityPackedKeccak256(
+    ['string', 'address'],
+    [claimId, ownerAddress]
+  );
+}
+
+/**
+ * Compute the secret hash that the contract compares against the stored
+ * secretHash during `completeClaim`:
+ *   keccak256(abi.encodePacked(rawSecret))
+ *
+ * The frontend hashes the secret before sending it on-chain so the raw
+ * secret is never exposed in calldata/mempool.
+ */
+export function computeSecretHash(rawSecret: string): string {
+  return ethers.solidityPackedKeccak256(['string'], [rawSecret.toUpperCase()]);
+}
+
+// ============================================
+// CONTRACT INTERACTIONS
+// ============================================
+
+/**
  * Owner initiates a claim on the blockchain.
- * @param config Contract addresses from the backend
- * @param claimId The claim UUID from the backend
- * @param itemId The item UUID
- * @param secretCode The raw secret code (will be hashed with keccak256)
- * @returns Transaction hash
+ *
+ * @param config      Contract addresses from the backend.
+ * @param claimId     The claim UUID from the backend (≤ 64 chars).
+ * @param itemId      The item UUID (≤ 64 chars).
+ * @param secretCode  The raw secret code — hashed to bytes32 before submission.
+ * @returns           Transaction hash.
  */
 export async function initiateClaimOnChain(
   config: BlockchainConfig,
@@ -149,8 +216,8 @@ export async function initiateClaimOnChain(
   secretCode: string,
 ): Promise<string> {
   const registry = await getRegistryContract(config);
-  const secretHash = ethers.keccak256(ethers.toUtf8Bytes(secretCode.toUpperCase()));
-
+  // Hash the secret: keccak256(abi.encodePacked(secret.toUpperCase()))
+  const secretHash = computeSecretHash(secretCode);
   const tx = await registry.initiateClaim(claimId, itemId, secretHash);
   const receipt = await tx.wait();
   return receipt.hash;
@@ -158,30 +225,76 @@ export async function initiateClaimOnChain(
 
 /**
  * Admin approves a claim on the blockchain.
+ *
+ * @param config       Contract addresses.
+ * @param internalKey  bytes32 key from `computeClaimKey(claimId, ownerAddress)`.
+ * @returns            Transaction hash.
  */
 export async function approveClaimOnChain(
   config: BlockchainConfig,
-  claimId: string,
+  internalKey: string,
 ): Promise<string> {
   const registry = await getRegistryContract(config);
-  const tx = await registry.approveClaim(claimId);
+  const tx = await registry.approveClaim(internalKey);
   const receipt = await tx.wait();
   return receipt.hash;
 }
 
 /**
- * Finder completes the claim on the blockchain.
- * Provides the raw secret — contract verifies the hash.
- * On success, FNDT reward tokens are minted to the finder.
- * @returns Transaction hash
+ * Admin rejects a *pending* claim on the blockchain.
+ * NOTE: Only pending claims can be rejected (not approved ones).
+ *
+ * @param config       Contract addresses.
+ * @param internalKey  bytes32 key from `computeClaimKey(claimId, ownerAddress)`.
+ * @returns            Transaction hash.
+ */
+export async function rejectClaimOnChain(
+  config: BlockchainConfig,
+  internalKey: string,
+): Promise<string> {
+  const registry = await getRegistryContract(config);
+  const tx = await registry.rejectClaim(internalKey);
+  const receipt = await tx.wait();
+  return receipt.hash;
+}
+
+/**
+ * Finder completes the claim by proving knowledge of the secret.
+ *
+ * The raw secret is hashed client-side (keccak256) before being sent on-chain,
+ * so the plaintext is never exposed in calldata or the mempool.
+ *
+ * @param config       Contract addresses.
+ * @param internalKey  bytes32 key from `computeClaimKey(claimId, ownerAddress)`.
+ * @param secretCode   The raw secret code the owner shared in person.
+ * @returns            Transaction hash.
  */
 export async function completeClaimOnChain(
   config: BlockchainConfig,
-  claimId: string,
+  internalKey: string,
   secretCode: string,
 ): Promise<string> {
   const registry = await getRegistryContract(config);
-  const tx = await registry.completeClaim(claimId, secretCode.toUpperCase());
+  // Hash the secret client-side — never send the raw string on-chain
+  const secretHashProof = computeSecretHash(secretCode);
+  const tx = await registry.completeClaim(internalKey, secretHashProof);
+  const receipt = await tx.wait();
+  return receipt.hash;
+}
+
+/**
+ * Trigger expiry of a claim whose timestamp has passed (anyone can call this).
+ *
+ * @param config       Contract addresses.
+ * @param internalKey  bytes32 key from `computeClaimKey(claimId, ownerAddress)`.
+ * @returns            Transaction hash.
+ */
+export async function expireClaimOnChain(
+  config: BlockchainConfig,
+  internalKey: string,
+): Promise<string> {
+  const registry = await getRegistryContract(config);
+  const tx = await registry.expireClaim(internalKey);
   const receipt = await tx.wait();
   return receipt.hash;
 }
@@ -200,7 +313,7 @@ export async function getRewardBalance(
 }
 
 /**
- * Calculate the expected reward for a finder.
+ * Calculate the expected reward for a finder based on their past claim count.
  */
 export async function calculateExpectedReward(
   config: BlockchainConfig,

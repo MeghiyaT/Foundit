@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
 import ItemCard, { type Item } from '@/components/ItemCard';
 import api from '@/lib/api';
 import { CATEGORIES } from '@/lib/utils';
 
-const SKELETON_COUNT = 8;
+const SKELETON_COUNT = 12;
 
 function ItemSkeleton() {
   return (
@@ -29,39 +29,59 @@ export default function ItemsPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'lost' | 'found'>('all');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const PAGE_SIZE = 12;
 
   const fetchItems = useCallback(async (reset = false) => {
     setLoading(true);
+    setError(false);
     try {
       const p = reset ? 1 : page;
       const params = new URLSearchParams();
       if (typeFilter !== 'all') params.set('type', typeFilter);
       if (categoryFilter) params.set('category', categoryFilter);
-      if (search.trim()) params.set('search', search.trim());
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
       params.set('page', String(p));
       params.set('limit', String(PAGE_SIZE));
 
       const { data } = await api.get(`/items?${params}`);
-      const newItems: Item[] = data.items ?? data;
+      const newItems: Item[] = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
       setItems(reset ? newItems : (prev) => [...prev, ...newItems]);
       setHasMore(newItems.length === PAGE_SIZE);
       if (!reset) setPage(p + 1);
     } catch {
-      // silently handle — items stays empty
+      setError(true);
+      setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, categoryFilter, search, page]);
+  }, [typeFilter, categoryFilter, searchTerm, page]);
 
-  // Reset on filter change
+  // Reset on filter change (including debounced search)
   useEffect(() => {
     setPage(1);
     fetchItems(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeFilter, categoryFilter]);
+  }, [typeFilter, categoryFilter, searchTerm, fetchItems]);
+
+  // Cleanup search timer on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, []);
+
+  // Debounced search: update searchTerm 300ms after user stops typing
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setSearchTerm(value);
+    }, 300);
+  };
 
   return (
     <>
@@ -102,8 +122,13 @@ export default function ItemsPage() {
                   type="text"
                   placeholder="Search items…"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && fetchItems(true)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (searchTimer.current) clearTimeout(searchTimer.current);
+                      setSearchTerm(search);
+                    }
+                  }}
                 />
               </div>
 
@@ -149,11 +174,25 @@ export default function ItemsPage() {
               </select>
             </div>
 
+            {/* Error state banner */}
+            {error && (
+              <div style={{
+                padding: '12px 16px', marginBottom: 20,
+                background: 'var(--danger-subtle)',
+                color: 'var(--danger)',
+                fontSize: 14, fontWeight: 600,
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--danger)',
+              }}>
+                Failed to load items. Please try refreshing the page.
+              </div>
+            )}
+
             {/* Grid */}
             {loading && items.length === 0 ? (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 350px))',
                 gap: 20,
               }}>
                 {Array.from({ length: SKELETON_COUNT }).map((_, i) => <ItemSkeleton key={i} />)}
@@ -180,7 +219,7 @@ export default function ItemsPage() {
               <>
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 350px))',
                   gap: 20,
                   marginBottom: 32,
                 }}>

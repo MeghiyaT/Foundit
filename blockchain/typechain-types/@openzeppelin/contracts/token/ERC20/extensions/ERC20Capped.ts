@@ -21,42 +21,25 @@ import type {
   TypedLogDescription,
   TypedListener,
   TypedContractMethod,
-} from "../common";
+} from "../../../../../common";
 
-export interface FinderRewardTokenInterface extends Interface {
+export interface ERC20CappedInterface extends Interface {
   getFunction(
     nameOrSignature:
-      | "MAX_SUPPLY"
       | "allowance"
       | "approve"
       | "balanceOf"
       | "cap"
       | "decimals"
-      | "mint"
-      | "minter"
       | "name"
-      | "owner"
-      | "renounceOwnership"
-      | "setMinter"
       | "symbol"
       | "totalSupply"
       | "transfer"
       | "transferFrom"
-      | "transferOwnership"
   ): FunctionFragment;
 
-  getEvent(
-    nameOrSignatureOrTopic:
-      | "Approval"
-      | "MinterUpdated"
-      | "OwnershipTransferred"
-      | "Transfer"
-  ): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "Approval" | "Transfer"): EventFragment;
 
-  encodeFunctionData(
-    functionFragment: "MAX_SUPPLY",
-    values?: undefined
-  ): string;
   encodeFunctionData(
     functionFragment: "allowance",
     values: [AddressLike, AddressLike]
@@ -71,21 +54,7 @@ export interface FinderRewardTokenInterface extends Interface {
   ): string;
   encodeFunctionData(functionFragment: "cap", values?: undefined): string;
   encodeFunctionData(functionFragment: "decimals", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "mint",
-    values: [AddressLike, BigNumberish]
-  ): string;
-  encodeFunctionData(functionFragment: "minter", values?: undefined): string;
   encodeFunctionData(functionFragment: "name", values?: undefined): string;
-  encodeFunctionData(functionFragment: "owner", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "renounceOwnership",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "setMinter",
-    values: [AddressLike]
-  ): string;
   encodeFunctionData(functionFragment: "symbol", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "totalSupply",
@@ -99,26 +68,13 @@ export interface FinderRewardTokenInterface extends Interface {
     functionFragment: "transferFrom",
     values: [AddressLike, AddressLike, BigNumberish]
   ): string;
-  encodeFunctionData(
-    functionFragment: "transferOwnership",
-    values: [AddressLike]
-  ): string;
 
-  decodeFunctionResult(functionFragment: "MAX_SUPPLY", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "allowance", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "approve", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "balanceOf", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "cap", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "decimals", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "mint", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "minter", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "name", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "renounceOwnership",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "setMinter", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "symbol", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "totalSupply",
@@ -127,10 +83,6 @@ export interface FinderRewardTokenInterface extends Interface {
   decodeFunctionResult(functionFragment: "transfer", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "transferFrom",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "transferOwnership",
     data: BytesLike
   ): Result;
 }
@@ -146,35 +98,6 @@ export namespace ApprovalEvent {
     owner: string;
     spender: string;
     value: bigint;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
-export namespace MinterUpdatedEvent {
-  export type InputTuple = [
-    previousMinter: AddressLike,
-    newMinter: AddressLike
-  ];
-  export type OutputTuple = [previousMinter: string, newMinter: string];
-  export interface OutputObject {
-    previousMinter: string;
-    newMinter: string;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
-export namespace OwnershipTransferredEvent {
-  export type InputTuple = [previousOwner: AddressLike, newOwner: AddressLike];
-  export type OutputTuple = [previousOwner: string, newOwner: string];
-  export interface OutputObject {
-    previousOwner: string;
-    newOwner: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -200,11 +123,11 @@ export namespace TransferEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
-export interface FinderRewardToken extends BaseContract {
-  connect(runner?: ContractRunner | null): FinderRewardToken;
+export interface ERC20Capped extends BaseContract {
+  connect(runner?: ContractRunner | null): ERC20Capped;
   waitForDeployment(): Promise<this>;
 
-  interface: FinderRewardTokenInterface;
+  interface: ERC20CappedInterface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
@@ -243,8 +166,6 @@ export interface FinderRewardToken extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  MAX_SUPPLY: TypedContractMethod<[], [bigint], "view">;
-
   allowance: TypedContractMethod<
     [owner: AddressLike, spender: AddressLike],
     [bigint],
@@ -263,21 +184,7 @@ export interface FinderRewardToken extends BaseContract {
 
   decimals: TypedContractMethod<[], [bigint], "view">;
 
-  mint: TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
-  minter: TypedContractMethod<[], [string], "view">;
-
   name: TypedContractMethod<[], [string], "view">;
-
-  owner: TypedContractMethod<[], [string], "view">;
-
-  renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
-
-  setMinter: TypedContractMethod<[_minter: AddressLike], [void], "nonpayable">;
 
   symbol: TypedContractMethod<[], [string], "view">;
 
@@ -295,19 +202,10 @@ export interface FinderRewardToken extends BaseContract {
     "nonpayable"
   >;
 
-  transferOwnership: TypedContractMethod<
-    [newOwner: AddressLike],
-    [void],
-    "nonpayable"
-  >;
-
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
 
-  getFunction(
-    nameOrSignature: "MAX_SUPPLY"
-  ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
     nameOrSignature: "allowance"
   ): TypedContractMethod<
@@ -332,27 +230,8 @@ export interface FinderRewardToken extends BaseContract {
     nameOrSignature: "decimals"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
-    nameOrSignature: "mint"
-  ): TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "minter"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
     nameOrSignature: "name"
   ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "owner"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
-    nameOrSignature: "renounceOwnership"
-  ): TypedContractMethod<[], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "setMinter"
-  ): TypedContractMethod<[_minter: AddressLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "symbol"
   ): TypedContractMethod<[], [string], "view">;
@@ -373,9 +252,6 @@ export interface FinderRewardToken extends BaseContract {
     [boolean],
     "nonpayable"
   >;
-  getFunction(
-    nameOrSignature: "transferOwnership"
-  ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
 
   getEvent(
     key: "Approval"
@@ -383,20 +259,6 @@ export interface FinderRewardToken extends BaseContract {
     ApprovalEvent.InputTuple,
     ApprovalEvent.OutputTuple,
     ApprovalEvent.OutputObject
-  >;
-  getEvent(
-    key: "MinterUpdated"
-  ): TypedContractEvent<
-    MinterUpdatedEvent.InputTuple,
-    MinterUpdatedEvent.OutputTuple,
-    MinterUpdatedEvent.OutputObject
-  >;
-  getEvent(
-    key: "OwnershipTransferred"
-  ): TypedContractEvent<
-    OwnershipTransferredEvent.InputTuple,
-    OwnershipTransferredEvent.OutputTuple,
-    OwnershipTransferredEvent.OutputObject
   >;
   getEvent(
     key: "Transfer"
@@ -416,28 +278,6 @@ export interface FinderRewardToken extends BaseContract {
       ApprovalEvent.InputTuple,
       ApprovalEvent.OutputTuple,
       ApprovalEvent.OutputObject
-    >;
-
-    "MinterUpdated(address,address)": TypedContractEvent<
-      MinterUpdatedEvent.InputTuple,
-      MinterUpdatedEvent.OutputTuple,
-      MinterUpdatedEvent.OutputObject
-    >;
-    MinterUpdated: TypedContractEvent<
-      MinterUpdatedEvent.InputTuple,
-      MinterUpdatedEvent.OutputTuple,
-      MinterUpdatedEvent.OutputObject
-    >;
-
-    "OwnershipTransferred(address,address)": TypedContractEvent<
-      OwnershipTransferredEvent.InputTuple,
-      OwnershipTransferredEvent.OutputTuple,
-      OwnershipTransferredEvent.OutputObject
-    >;
-    OwnershipTransferred: TypedContractEvent<
-      OwnershipTransferredEvent.InputTuple,
-      OwnershipTransferredEvent.OutputTuple,
-      OwnershipTransferredEvent.OutputObject
     >;
 
     "Transfer(address,address,uint256)": TypedContractEvent<

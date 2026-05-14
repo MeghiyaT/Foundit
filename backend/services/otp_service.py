@@ -6,6 +6,7 @@ Sends OTP emails via Resend.
 
 import secrets
 import hashlib
+import base64
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -23,23 +24,64 @@ def generate_otp() -> str:
 
 
 def hash_otp(otp: str) -> str:
-    """Hash an OTP using SHA-256 (fast, sufficient for short-lived tokens)."""
-    return hashlib.sha256(otp.encode()).hexdigest()
+    """
+    Hash an OTP using scrypt with a random per-OTP 16-byte salt.
+    Returns a string in format: base64(salt)$hex(hash)
+    This prevents rainbow-table attacks on the 6-digit OTP space.
+    """
+    salt = secrets.token_bytes(16)
+    derived = hashlib.scrypt(
+        otp.encode(),
+        salt=salt,
+        n=16384,  # CPU/memory cost factor (N)
+        r=8,       # Block size
+        p=1,       # Parallelization
+        maxmem=0,
+        dklen=32,  # 256-bit output
+    )
+    return f"{base64.b64encode(salt).decode()}${derived.hex()}"
 
 
-def verify_otp(otp: str, otp_hash: str, expires_at: datetime) -> bool:
-    """Return True if the OTP matches the hash and hasn't expired."""
+def verify_otp(otp: str, stored: str, expires_at: datetime) -> bool:
+    """
+    Return True if the OTP matches the stored scrypt hash and hasn't expired.
+    stored must be in format: base64(salt)$hex(hash)
+    Also supports legacy SHA-256 hashes for backward compatibility during migration.
+    """
     now = datetime.now(tz=timezone.utc)
-    # Ensure expires_at is timezone-aware for comparison
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if now > expires_at:
-        logger.warning(f"OTP expired at {expires_at}, now is {now}")
+        logger.warning("OTP expired")
         return False
-    result = hash_otp(otp) == otp_hash
-    if not result:
-        logger.warning("OTP hash mismatch")
-    return result
+
+    # Legacy SHA-256 verification (fallback for existing OTPs)
+    if "$" not in stored:
+        result = hashlib.sha256(otp.encode()).hexdigest() == stored
+        if not result:
+            logger.warning("OTP hash mismatch (legacy)")
+        return result
+
+    # Scrypt verification
+    try:
+        salt_b64, hash_hex = stored.split("$", 1)
+        salt = base64.b64decode(salt_b64)
+        derived = hashlib.scrypt(
+            otp.encode(),
+            salt=salt,
+            n=16384,
+            r=8,
+            p=1,
+            maxmem=0,
+            dklen=32,
+        )
+        result = derived.hex() == hash_hex
+        if not result:
+            logger.warning("OTP hash mismatch (scrypt)")
+        return result
+    except Exception:
+        logger.exception("Failed to verify OTP hash")
+        return False
 
 
 def otp_expires_at() -> datetime:
@@ -53,8 +95,8 @@ def send_otp_email(to_email: str, otp: str, item_title: str) -> bool:
     Returns True on success, False on failure.
     OTP is always logged to terminal for debugging.
     """
-    # Always log to terminal first — never lose the OTP
-    logger.info(f"[OTP] *** Verification code for {to_email}: {otp} ***")
+    # Log that an OTP was generated (never log the code itself in production)
+    logger.info(f"[OTP] Verification code generated for {to_email}")
 
     settings = get_settings()
     if not settings.RESEND_API_KEY:
@@ -88,13 +130,14 @@ def send_otp_email(to_email: str, otp: str, item_title: str) -> bool:
         params: resend.Emails.SendParams = {
             "from": "Foundit <onboarding@resend.dev>",
             "to": [to_email],
-            "subject": f"Your Foundit verification code: {otp}",
+            "subject": "Your Foundit verification code",
             "html": html_body,
         }
         result = resend.Emails.send(params)
-        logger.info(f"OTP email sent to {to_email} (id={result.get('id', '?')}). Code: {otp}")
+        logger.info(f"OTP email sent to {to_email} (id={result.get('id', '?')})")
         return True
     except Exception as e:
         logger.error(f"Failed to send OTP email: {e}")
-        logger.info(f"[FALLBACK] OTP for {to_email}: {otp}")
+        # In development only — log OTP for debugging
+        logger.debug(f"[DEV] OTP for {to_email}: {otp}")
         return False

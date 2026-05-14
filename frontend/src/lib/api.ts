@@ -35,7 +35,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      window.location.href = '/sign-in';
+      const currentPath = window.location.pathname + window.location.search;
+      // Don't redirect if already on sign-in/sign-up to avoid loops
+      if (!currentPath.startsWith('/sign-in') && !currentPath.startsWith('/sign-up')) {
+        window.location.href = `/sign-in?redirect=${encodeURIComponent(currentPath)}`;
+      }
     }
     return Promise.reject(error);
   }

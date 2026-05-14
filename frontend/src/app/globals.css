@@ -463,3 +463,38 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ============================================
+   RESPONSIVE — Messages layout
+   ============================================ */
+
+@media (max-width: 640px) {
+  .messages-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .messages-layout .messages-sidebar {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    max-height: 50vh;
+  }
+
+  /* When a thread is selected on mobile, hide sidebar */
+  .messages-layout.thread-open .messages-sidebar {
+    display: none;
+  }
+
+  .messages-back-btn {
+    display: inline-flex !important;
+  }
+}
+
+/* ============================================
+   RESPONSIVE — Grid layouts
+   ============================================ */
+
+@media (max-width: 640px) {
+  .items-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -13,6 +13,7 @@ interface Props {
 export default function ImageUpload({ onFileSelect, preview, onRemove, disabled }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
+  const [fileName, setFileName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const validateAndSet = useCallback((file: File) => {
@@ -25,6 +26,7 @@ export default function ImageUpload({ onFileSelect, preview, onRemove, disabled 
       setError('Image must be under 5 MB.');
       return;
     }
+    setFileName(file.name);
     onFileSelect(file);
   }, [onFileSelect]);
 
@@ -78,7 +80,7 @@ export default function ImageUpload({ onFileSelect, preview, onRemove, disabled 
           padding: '3px 10px', borderRadius: 'var(--radius-full)',
           fontSize: 12, fontWeight: 500,
         }}>
-          ✓ Image selected
+          {fileName || '✓ Image selected'}
         </div>
       </div>
     );

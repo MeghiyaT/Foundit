@@ -3,15 +3,16 @@ Foundit — Message Schemas
 Pydantic models for direct messaging between users
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
+from uuid import UUID
 from datetime import datetime
 
 
 class MessageCreate(BaseModel):
-    item_id: str
+    item_id: UUID
     receiver_id: str
-    content: str
+    content: str = Field(..., min_length=1, max_length=5000)
 
 
 class MessageResponse(BaseModel):
