@@ -5,21 +5,22 @@ Pydantic models for blockchain-based claims
 
 from pydantic import BaseModel
 from typing import Optional
+from uuid import UUID
 from datetime import datetime
 
 
 class ClaimCreate(BaseModel):
     """Owner initiates a claim for an item."""
-    item_id: str
+    item_id: UUID
     finder_id: str          # The user who found the item
-    owner_wallet: str       # Owner's MetaMask wallet address
+    owner_wallet: Optional[str] = None  # Optional: MetaMask wallet address (off-chain fallback supported)
 
 
 class ClaimComplete(BaseModel):
-    """Finder completes the claim with the secret code and blockchain tx."""
-    secret_code: str        # Raw secret code shared in person
-    tx_hash: str            # Blockchain transaction hash
-    finder_wallet: str      # Finder's MetaMask wallet address
+    """Finder completes the claim with the secret code and optionally a blockchain tx."""
+    secret_code: str                    # Raw secret code shared in person
+    tx_hash: Optional[str] = None      # Blockchain tx hash (None = off-chain path)
+    finder_wallet: Optional[str] = None # Finder's MetaMask wallet (None = off-chain path)
 
 
 class ClaimApprove(BaseModel):

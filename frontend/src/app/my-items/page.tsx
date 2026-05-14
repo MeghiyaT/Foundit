@@ -7,8 +7,6 @@ import ItemCard, { type Item } from '@/components/ItemCard';
 import api from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
-import Image from 'next/image';
-import { formatSimilarity, formatDate } from '@/lib/utils';
 
 export interface MatchWithItems {
   id: string;
@@ -36,34 +34,26 @@ function ItemSkeleton() {
 }
 
 export default function MyItemsPage() {
-  const { userId, isLoaded, getToken } = useAuth();
+  const { userId, isLoaded } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
-  const [matches, setMatches] = useState<MatchWithItems[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'lost' | 'found' | 'matches'>('lost');
+  const [error, setError] = useState(false);
+  const [tab, setTab] = useState<'lost' | 'found'>('lost');
 
   const fetchItems = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+    setError(false);
     try {
-      const token = await getToken();
-      if (token) {
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      }
-      
-      if (tab === 'matches') {
-        const { data } = await api.get('/matches/mine');
-        setMatches(data);
-      } else {
-        const { data } = await api.get(`/items?user_id=${userId}&type=${tab}&limit=50`);
-        setItems(data.items || data);
-      }
+      const { data } = await api.get(`/items?user_id=${userId}&type=${tab}&limit=50`);
+      setItems(Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : []);
     } catch {
-      // Handle error cleanly
+      setError(true);
+      setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [userId, tab, getToken]);
+  }, [userId, tab]);
 
   useEffect(() => {
     if (isLoaded) {
@@ -89,29 +79,43 @@ export default function MyItemsPage() {
             </div>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: 12, marginBottom: 32 }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 32, alignItems: 'center' }}>
               <button
                 onClick={() => setTab('lost')}
                 className={tab === 'lost' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ flex: 1, maxWidth: 200 }}
+                style={{ flex: 1, maxWidth: 180 }}
               >
                 My Lost Items
               </button>
               <button
                 onClick={() => setTab('found')}
                 className={tab === 'found' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ flex: 1, maxWidth: 200 }}
+                style={{ flex: 1, maxWidth: 180 }}
               >
                 My Findings
               </button>
-              <button
-                onClick={() => setTab('matches')}
-                className={tab === 'matches' ? 'btn btn-primary' : 'btn btn-secondary'}
-                style={{ flex: 1, maxWidth: 200 }}
+              <Link
+                href="/matches"
+                className="btn btn-secondary"
+                style={{ flex: 1, maxWidth: 180, textAlign: 'center', textDecoration: 'none' }}
               >
-                AI Matches
-              </button>
+                🤖 AI Matches →
+              </Link>
             </div>
+
+            {/* Error banner */}
+            {error && (
+              <div style={{
+                padding: '12px 16px', marginBottom: 20,
+                background: 'var(--danger-subtle)',
+                color: 'var(--danger)',
+                fontSize: 14, fontWeight: 600,
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--danger)',
+              }}>
+                Failed to load items. Please try refreshing the page.
+              </div>
+            )}
 
             {/* Grid */}
             {loading ? (

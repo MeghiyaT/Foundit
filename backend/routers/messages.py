@@ -4,10 +4,12 @@ Direct messaging between users for item claims
 """
 
 import logging
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from routers.auth import get_current_user, UserProfile
 from database import get_supabase_client
 from schemas.message import MessageCreate, MessageResponse
+from services.email_service import notify_new_message
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/messages", tags=["messages"])
@@ -28,15 +30,23 @@ async def send_message(
     if not item_res.data:
         raise HTTPException(status_code=404, detail="Item not found.")
 
-    # Prevent messaging yourself
+    item_owner_id = item_res.data[0]["user_id"]
+
     if payload.receiver_id == user.id:
         raise HTTPException(status_code=400, detail="You cannot message yourself.")
+
+    # Non-owners may only contact the item poster; the poster may reply to others.
+    if user.id != item_owner_id and payload.receiver_id != item_owner_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You may only message the item poster about this item.",
+        )
 
     if not payload.content.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     msg_data = {
-        "item_id": payload.item_id,
+        "item_id": str(payload.item_id),
         "sender_id": user.id,
         "receiver_id": payload.receiver_id,
         "content": payload.content.strip()[:1000],  # cap at 1000 chars
@@ -48,11 +58,27 @@ async def send_message(
 
     msg = result.data[0]
 
+    # Notify receiver by email (fire-and-forget, never blocks)
+    try:
+        receiver_res = supabase.table("users").select("email, name").eq("id", payload.receiver_id).execute()
+        if receiver_res.data:
+            receiver = receiver_res.data[0]
+            notify_new_message(
+                receiver_email=receiver["email"],
+                sender_name=user.name or user.email.split("@")[0],
+                item_title=item_res.data[0]["title"],
+                message_preview=payload.content.strip(),
+                item_id=str(payload.item_id),
+                sender_id=user.id,
+            )
+    except Exception as email_err:
+        logger.warning("Message email notification failed: %s", email_err)
+
     return MessageResponse(
-        id=msg["id"],
-        item_id=msg["item_id"],
-        sender_id=msg["sender_id"],
-        receiver_id=msg["receiver_id"],
+        id=str(msg["id"]),
+        item_id=str(msg["item_id"]),
+        sender_id=str(msg["sender_id"]),
+        receiver_id=str(msg["receiver_id"]),
         content=msg["content"],
         created_at=msg.get("created_at"),
     )
@@ -112,7 +138,7 @@ async def get_conversations(
 
 @router.get("/thread/{item_id}/{other_user_id}")
 async def get_thread(
-    item_id: str,
+    item_id: UUID,
     other_user_id: str,
     user: UserProfile = Depends(get_current_user),
 ):

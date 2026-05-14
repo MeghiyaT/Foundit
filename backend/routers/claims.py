@@ -11,26 +11,35 @@ Anti-scam:
   - Admin must approve before completion (prevents token farming)
   - Secret code shared in person (prevents remote fraud)
   - 1-hour expiry on claims
-  - Minimum 24-hour item age before claiming
-  - Rate limiting: max 2 claims per user per month
 """
 
 import logging
 import secrets
-import hashlib
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
+from eth_hash.auto import keccak as eth_keccak
 from fastapi import APIRouter, Depends, HTTPException
 from routers.auth import get_current_user, UserProfile
 from database import get_supabase_client
 from schemas.claim import ClaimCreate, ClaimComplete, ClaimResponse
+from services.email_service import (
+    notify_claim_initiated,
+    notify_claim_approved,
+    notify_claim_completed,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/claims", tags=["claims"])
 
 CLAIM_EXPIRY_HOURS = 1
-MIN_ITEM_AGE_HOURS = 24
-MAX_CLAIMS_PER_MONTH = 2
+
+
+def _claim_for_response(row: dict) -> dict:
+    """Strip server-only fields from claim JSON."""
+    out = dict(row)
+    out.pop("secret_hash", None)
+    return out
 
 
 def _generate_secret() -> str:
@@ -40,8 +49,16 @@ def _generate_secret() -> str:
 
 
 def _hash_secret(secret: str) -> str:
-    """SHA-256 hash of the secret code."""
-    return hashlib.sha256(secret.upper().encode()).hexdigest()
+    """
+    keccak256 hash of the uppercased secret — mirrors the on-chain hashing in
+    HandoverRegistry.completeClaim which computes:
+        secretHashProof == keccak256(abi.encodePacked(rawSecret.toUpperCase()))
+
+    Using the same algorithm ensures the backend's off-chain verification is
+    consistent with the smart contract's on-chain check.
+    """
+    encoded = secret.upper().encode("utf-8")
+    return eth_keccak(encoded).hex()
 
 
 @router.post("", response_model=ClaimResponse)
@@ -61,34 +78,26 @@ async def initiate_claim(
         raise HTTPException(status_code=404, detail="Item not found.")
     item = item_res.data[0]
 
+    if item.get("user_id") != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the item owner can initiate a claim for this item.",
+        )
+
+    if payload.finder_id == user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Finder must be a different user than the item owner.",
+        )
+
     if item["status"] == "closed":
         raise HTTPException(status_code=400, detail="This item has already been claimed.")
 
-    # 2. Check minimum item age (24 hours)
-    created_at = datetime.fromisoformat(item["created_at"].replace("Z", "+00:00"))
-    now = datetime.now(tz=timezone.utc)
-    age_hours = (now - created_at).total_seconds() / 3600
-    if age_hours < MIN_ITEM_AGE_HOURS:
-        remaining = round(MIN_ITEM_AGE_HOURS - age_hours, 1)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Items must be posted for at least 24 hours before claiming. {remaining}h remaining.",
-        )
+    finder_row = supabase.table("users").select("id").eq("id", payload.finder_id).limit(1).execute()
+    if not finder_row.data:
+        raise HTTPException(status_code=400, detail="Invalid finder user.")
 
-    # 3. Rate limit: max claims per month (as owner/claimant)
-    month_ago = (now - timedelta(days=30)).isoformat()
-    owner_claims = supabase.table("claims").select("id", count="exact") \
-        .eq("claimant_id", user.id) \
-        .gte("created_at", month_ago) \
-        .in_("status", ["pending", "approved", "completed"]) \
-        .execute()
-    if (owner_claims.count or 0) >= MAX_CLAIMS_PER_MONTH:
-        raise HTTPException(
-            status_code=429,
-            detail=f"You can only initiate {MAX_CLAIMS_PER_MONTH} claims per month.",
-        )
-
-    # 4. Check no active claim already exists for this item
+    # 2. Check no active claim already exists for this item
     existing = supabase.table("claims").select("id") \
         .eq("item_id", payload.item_id) \
         .in_("status", ["pending", "approved"]) \
@@ -96,14 +105,15 @@ async def initiate_claim(
     if existing.data:
         raise HTTPException(status_code=400, detail="An active claim already exists for this item.")
 
-    # 5. Generate secret code
+    # 3. Generate secret code
+    now = datetime.now(tz=timezone.utc)
     secret = _generate_secret()
     secret_hash = _hash_secret(secret)
     expires_at = now + timedelta(hours=CLAIM_EXPIRY_HOURS)
 
-    # 6. Store claim
+    # 4. Store claim
     claim_data = {
-        "item_id": payload.item_id,
+        "item_id": str(payload.item_id),
         "claimant_id": user.id,
         "finder_id": payload.finder_id,
         "secret_hash": secret_hash,
@@ -119,9 +129,22 @@ async def initiate_claim(
     claim = result.data[0]
     logger.info(f"Claim initiated: {claim['id']} for item {payload.item_id} by {user.id}")
 
+    # Notify admin(s) by email
+    try:
+        admins = supabase.table("users").select("email").eq("role", "admin").execute()
+        for admin in (admins.data or []):
+            notify_claim_initiated(
+                admin_email=admin["email"],
+                item_title=item["title"],
+                owner_email=user.email,
+                claim_id=str(claim["id"]),
+            )
+    except Exception as email_err:
+        logger.warning("Claim initiated email failed: %s", email_err)
+
     return ClaimResponse(
-        id=claim["id"],
-        item_id=claim["item_id"],
+        id=str(claim["id"]),
+        item_id=str(claim["item_id"]),
         claimant_id=claim["claimant_id"],
         finder_id=claim.get("finder_id"),
         status="pending",
@@ -133,7 +156,7 @@ async def initiate_claim(
 
 @router.get("/{claim_id}")
 async def get_claim(
-    claim_id: str,
+    claim_id: UUID,
     user: UserProfile = Depends(get_current_user),
 ):
     """Get claim status. Accessible by owner, finder, or admin."""
@@ -155,28 +178,41 @@ async def get_claim(
             supabase.table("claims").update({"status": "expired"}).eq("id", claim_id).execute()
             claim["status"] = "expired"
 
-    return claim
+    return _claim_for_response(claim)
 
 
 @router.get("/item/{item_id}")
 async def get_item_claims(
-    item_id: str,
+    item_id: UUID,
     user: UserProfile = Depends(get_current_user),
 ):
-    """Get all claims for a specific item."""
+    """List claims for an item: item owner and admin see all; finder sees only their rows."""
     supabase = get_supabase_client()
+
+    item_res = supabase.table("items").select("id, user_id").eq("id", item_id).execute()
+    if not item_res.data:
+        raise HTTPException(status_code=404, detail="Item not found.")
+    item_owner_id = item_res.data[0].get("user_id")
 
     claims_res = supabase.table("claims").select("*") \
         .eq("item_id", item_id) \
         .order("created_at", desc=True) \
         .execute()
+    rows = claims_res.data or []
 
-    return {"claims": claims_res.data or []}
+    if user.role == "admin" or item_owner_id == user.id:
+        return {"claims": [_claim_for_response(c) for c in rows]}
+
+    finder_rows = [c for c in rows if c.get("finder_id") == user.id]
+    if not finder_rows:
+        raise HTTPException(status_code=403, detail="Not authorized to view claims for this item.")
+
+    return {"claims": [_claim_for_response(c) for c in finder_rows]}
 
 
 @router.post("/{claim_id}/approve")
 async def approve_claim(
-    claim_id: str,
+    claim_id: UUID,
     user: UserProfile = Depends(get_current_user),
 ):
     """Admin approves a pending claim after verifying legitimacy."""
@@ -208,12 +244,29 @@ async def approve_claim(
     }).eq("id", claim_id).execute()
 
     logger.info(f"Claim {claim_id} approved by admin {user.id}")
+
+    # Notify finder by email
+    try:
+        finder_id = claim.get("finder_id")
+        if finder_id:
+            finder_res = supabase.table("users").select("email").eq("id", finder_id).execute()
+            if finder_res.data:
+                item_res2 = supabase.table("items").select("title").eq("id", claim["item_id"]).execute()
+                item_title = item_res2.data[0]["title"] if item_res2.data else "your item"
+                notify_claim_approved(
+                    finder_email=finder_res.data[0]["email"],
+                    item_title=item_title,
+                    claim_id=str(claim_id),
+                )
+    except Exception as email_err:
+        logger.warning("Claim approved email failed: %s", email_err)
+
     return {"message": "Claim approved.", "claim_id": claim_id, "expires_at": new_expiry.isoformat()}
 
 
 @router.post("/{claim_id}/reject")
 async def reject_claim(
-    claim_id: str,
+    claim_id: UUID,
     user: UserProfile = Depends(get_current_user),
 ):
     """Admin rejects a suspicious claim."""
@@ -227,8 +280,17 @@ async def reject_claim(
         raise HTTPException(status_code=404, detail="Claim not found.")
     claim = claim_res.data[0]
 
-    if claim["status"] not in ("pending", "approved"):
-        raise HTTPException(status_code=400, detail=f"Cannot reject a {claim['status']} claim.")
+    # Only pending claims can be rejected — mirrors the smart contract guard.
+    # Approved claims may only expire naturally; rejecting an approved claim
+    # after the finder has been shown the secret would be an admin rug-pull.
+    if claim["status"] != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Cannot reject a {claim['status']} claim. "
+                "Only pending claims can be rejected."
+            ),
+        )
 
     supabase.table("claims").update({"status": "rejected"}).eq("id", claim_id).execute()
 
@@ -238,7 +300,7 @@ async def reject_claim(
 
 @router.post("/{claim_id}/complete")
 async def complete_claim(
-    claim_id: str,
+    claim_id: UUID,
     payload: ClaimComplete,
     user: UserProfile = Depends(get_current_user),
 ):
@@ -288,13 +350,14 @@ async def complete_claim(
     reward = reward_tiers[min(past_count, len(reward_tiers) - 1)]
 
     # Mark claim completed
+    tx = payload.tx_hash or "offchain"
     supabase.table("claims").update({
         "status": "completed",
         "verified": True,
-        "tx_hash": payload.tx_hash,
+        "tx_hash": tx,
         "finder_wallet": payload.finder_wallet,
         "reward_amount": reward,
-        "nft_tx_hash": payload.tx_hash,  # Legacy field
+        "nft_tx_hash": tx,  # Legacy field
     }).eq("id", claim_id).execute()
 
     # Close the item — it will disappear from the public feed
@@ -305,11 +368,28 @@ async def complete_claim(
     if user_res.data and not user_res.data[0].get("wallet_address"):
         supabase.table("users").update({"wallet_address": payload.finder_wallet}).eq("id", user.id).execute()
 
-    logger.info(f"Claim {claim_id} completed. Finder {user.id} awarded {reward} FNDT. Tx: {payload.tx_hash}")
+    logger.info(f"Claim {claim_id} completed. Finder {user.id} awarded {reward} FNDT. Tx: {payload.tx_hash or 'offchain'}")
+
+    # Notify item owner by email
+    try:
+        owner_id = claim.get("claimant_id")
+        if owner_id:
+            owner_res = supabase.table("users").select("email").eq("id", owner_id).execute()
+            if owner_res.data:
+                item_res2 = supabase.table("items").select("title").eq("id", claim["item_id"]).execute()
+                item_title = item_res2.data[0]["title"] if item_res2.data else "your item"
+                notify_claim_completed(
+                    owner_email=owner_res.data[0]["email"],
+                    item_title=item_title,
+                    finder_name=user.name or user.email.split("@")[0],
+                    reward_amount=reward,
+                )
+    except Exception as email_err:
+        logger.warning("Claim completed email failed: %s", email_err)
 
     return {
         "message": "Claim completed! Item has been marked as resolved.",
         "claim_id": claim_id,
         "reward_amount": reward,
-        "tx_hash": payload.tx_hash,
+        "tx_hash": payload.tx_hash or "offchain",
     }

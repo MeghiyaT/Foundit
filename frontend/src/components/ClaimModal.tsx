@@ -8,6 +8,7 @@ import {
   switchToSepolia,
   initiateClaimOnChain,
   completeClaimOnChain,
+  computeClaimKey,
   getRewardBalance,
   getEtherscanTxUrl,
   type BlockchainConfig,
@@ -37,6 +38,11 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
   // Owner flow state
   const [secretCode, setSecretCode] = useState('');
   const [claimId, setClaimId] = useState('');
+  /**
+   * On-chain internal key: keccak256(claimId, ownerWallet).
+   * Stored after initiateClaim so completeClaim (finder) can look it up.
+   */
+  const [internalKey, setInternalKey] = useState('');
   const [copied, setCopied] = useState(false);
 
   // Finder flow state
@@ -48,7 +54,12 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
   // Fetch blockchain config on mount
   useEffect(() => {
     api.get('/config/blockchain')
-      .then(({ data }) => setBlockchainConfig(data))
+      .then(({ data }) => {
+        setBlockchainConfig(data);
+        if (!data.handover_registry_address || !data.reward_token_address) {
+          setError('Blockchain contract addresses are not configured. Please contact the admin.');
+        }
+      })
       .catch(() => setError('Failed to load blockchain config.'));
   }, []);
 
@@ -86,7 +97,8 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
     setError('');
     try {
       if (!isMetaMaskInstalled()) {
-        setError('MetaMask is not installed. Please install the MetaMask browser extension.');
+        setError('__NO_METAMASK__');
+        setLoading(false);
         return;
       }
       const info = await connectWallet();
@@ -111,7 +123,6 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
   };
 
   const handleInitiateClaim = async () => {
-    if (!wallet || !blockchainConfig) return;
     setLoading(true);
     setError('');
     try {
@@ -119,18 +130,23 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       const { data } = await api.post('/claims', {
         item_id: itemId,
         finder_id: otherUserId,
-        owner_wallet: wallet.address,
+        owner_wallet: wallet?.address || null,
       });
       setSecretCode(data.secret_code);
       setClaimId(data.id);
 
-      // 2. Record on blockchain
-      await initiateClaimOnChain(
-        blockchainConfig,
-        data.id,
-        itemId,
-        data.secret_code,
-      );
+      // 2. Only attempt blockchain if wallet is connected AND contracts are deployed
+      const contractsDeployed = !!(blockchainConfig?.handover_registry_address && blockchainConfig?.reward_token_address);
+      if (wallet && contractsDeployed) {
+        try {
+          const key = computeClaimKey(data.id, wallet.address);
+          setInternalKey(key);
+          await initiateClaimOnChain(blockchainConfig!, data.id, itemId, data.secret_code);
+        } catch (chainErr) {
+          // Blockchain failed — still proceed off-chain
+          console.warn('On-chain initiation failed, proceeding off-chain:', chainErr);
+        }
+      }
 
       setStep('waiting');
     } catch (err: unknown) {
@@ -142,12 +158,14 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
   };
 
   const handleCompleteClaim = async () => {
-    if (!wallet || !blockchainConfig || !inputCode.trim()) return;
+    if (!inputCode.trim()) return;
     setLoading(true);
     setError('');
     try {
-      // Find the approved claim for this item
+      // 1. Find the approved claim for this item
       let activeClaimId = claimId;
+      let activeKey = internalKey;
+
       if (!activeClaimId) {
         const { data } = await api.get(`/claims/item/${itemId}`);
         const approved = (data.claims || []).find(
@@ -160,32 +178,56 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         }
         activeClaimId = approved.id;
         setClaimId(activeClaimId);
+
+        // Recompute key only if wallet + owner_wallet both available
+        if (!activeKey && approved.owner_wallet && wallet) {
+          activeKey = computeClaimKey(activeClaimId, approved.owner_wallet);
+          setInternalKey(activeKey);
+        }
       }
 
-      setStep('blockchain');
+      const contractsDeployed = !!(blockchainConfig?.handover_registry_address && blockchainConfig?.reward_token_address);
 
-      // 1. Call blockchain — verify secret and mint reward
-      const hash = await completeClaimOnChain(
-        blockchainConfig,
-        activeClaimId,
-        inputCode.trim(),
-      );
-      setTxHash(hash);
+      // 2. Blockchain path — only if wallet connected AND contracts deployed AND we have the key
+      if (wallet && contractsDeployed && activeKey) {
+        setStep('blockchain');
+        try {
+          const hash = await completeClaimOnChain(
+            blockchainConfig!,
+            activeKey,
+            inputCode.trim(),
+          );
+          setTxHash(hash);
 
-      // 2. Complete on backend
-      const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
-        secret_code: inputCode.trim().toUpperCase(),
-        tx_hash: hash,
-        finder_wallet: wallet.address,
-      });
-      setRewardAmount(data.reward_amount);
+          const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
+            secret_code: inputCode.trim().toUpperCase(),
+            tx_hash: hash,
+            finder_wallet: wallet.address,
+          });
+          setRewardAmount(data.reward_amount);
 
-      // 3. Get updated token balance
-      try {
-        const balance = await getRewardBalance(blockchainConfig, wallet.address);
-        setTokenBalance(balance);
-      } catch {
-        setTokenBalance('');
+          try {
+            const balance = await getRewardBalance(blockchainConfig!, wallet.address);
+            setTokenBalance(balance);
+          } catch {
+            setTokenBalance('');
+          }
+        } catch (chainErr) {
+          // Blockchain failed — fall back to off-chain verification
+          console.warn('On-chain completion failed, trying off-chain:', chainErr);
+          const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
+            secret_code: inputCode.trim().toUpperCase(),
+            finder_wallet: wallet?.address || null,
+          });
+          setRewardAmount(data.reward_amount);
+        }
+      } else {
+        // 3. Off-chain path — no MetaMask or contracts not deployed
+        const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
+          secret_code: inputCode.trim().toUpperCase(),
+          finder_wallet: wallet?.address || null,
+        });
+        setRewardAmount(data.reward_amount);
       }
 
       setStep('success');
@@ -257,7 +299,42 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
               ⚠️ Make sure you're on the <strong>Sepolia Testnet</strong>. We'll switch automatically if needed.
             </div>
 
-            {error && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>{error}</p>}
+            {error === '__NO_METAMASK__' ? (
+              <div style={{
+                padding: '16px', marginBottom: 16,
+                background: 'var(--warning-subtle)', border: '1px solid rgba(217,119,6,0.2)',
+                borderRadius: 'var(--radius-md)',
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--warning)', marginBottom: 8 }}>
+                  🦊 MetaMask Not Detected
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                  MetaMask is required to record the handover on-chain and earn FNDT tokens.
+                </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <a
+                    href="https://metamask.io/download/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary"
+                    style={{ fontSize: 13, padding: '8px 16px' }}
+                  >
+                    Install MetaMask ↗
+                  </a>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: 13, padding: '8px 16px' }}
+                    onClick={() => {
+                      setError('');
+                      if (role === 'owner') setStep('initiate');
+                      else setStep('enter_code');
+                    }}
+                  >
+                    Continue without wallet
+                  </button>
+                </div>
+              </div>
+            ) : error && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>{error}</p>}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

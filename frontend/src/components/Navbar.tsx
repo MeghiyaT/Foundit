@@ -10,8 +10,10 @@ const NAV_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/items', label: 'Browse' },
   { href: '/my-items', label: 'My Items' },
+  { href: '/matches', label: 'Matches' },
   { href: '/report', label: 'Report Item' },
   { href: '/messages', label: 'Messages' },
+  { href: '/profile', label: 'Profile' },
   { href: '/admin', label: 'Admin' },
 ];
 
@@ -22,6 +24,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -34,8 +37,13 @@ export default function Navbar() {
       api.post('/auth/verify')
         .then(({ data }) => setIsAdmin(data.role === 'admin'))
         .catch(() => setIsAdmin(false));
+      // Fetch conversation count for the badge
+      api.get('/messages/conversations')
+        .then(({ data }) => setUnreadCount((data.conversations || []).length))
+        .catch(() => setUnreadCount(0));
     } else {
       setIsAdmin(false);
+      setUnreadCount(0);
     }
   }, [isSignedIn]);
 
@@ -85,6 +93,7 @@ export default function Navbar() {
         <nav style={{ display: 'flex', gap: 4, flex: 1 }} className="hidden-mobile">
           {visibleNavLinks.map((link) => {
             const active = pathname === link.href;
+            const showBadge = link.href === '/messages' && unreadCount > 0 && !active;
             return (
               <Link
                 key={link.href}
@@ -98,6 +107,10 @@ export default function Navbar() {
                   background: active ? 'var(--accent-subtle)' : 'transparent',
                   textDecoration: 'none',
                   transition: 'all 150ms ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  position: 'relative',
                 }}
                 onMouseEnter={(e) => {
                   if (!active) {
@@ -113,6 +126,17 @@ export default function Navbar() {
                 }}
               >
                 {link.label}
+                {showBadge && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 18, height: 18, padding: '0 5px',
+                    background: 'var(--accent)', color: 'white',
+                    fontSize: 10, fontWeight: 700, borderRadius: 'var(--radius-full)',
+                    lineHeight: 1,
+                  }}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -149,7 +173,6 @@ export default function Navbar() {
             onClick={() => setMenuOpen(!menuOpen)}
             className="show-mobile"
             style={{
-              display: 'none',
               background: 'none', border: 'none', cursor: 'pointer',
               padding: 8, color: 'var(--text-primary)',
             }}
@@ -200,8 +223,7 @@ export default function Navbar() {
         }
         @media (max-width: 639px) {
           .hidden-mobile { display: none !important; }
-          .show-mobile { display: block !important; }
-          #mobile-menu-btn { display: block !important; }
+           .show-mobile { display: block !important; }
         }
       `}
       </style>

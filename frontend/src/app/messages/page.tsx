@@ -48,9 +48,11 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState(false);
   const [otherUser, setOtherUser] = useState<{ email: string; name?: string } | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
-  const { userId, isLoaded: authLoaded, getToken } = useAuth();
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const { userId, isLoaded: authLoaded } = useAuth();
   const threadEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -59,13 +61,7 @@ export default function MessagesPage() {
 
       setLoading(true);
       try {
-        const token = await getToken();
-        // Set token provider for api interceptor
-        if (token) {
-          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        }
-
-        // Load conversations
+        // tokenProvider in api.ts handles auth — no manual header needed
         const { data } = await api.get('/messages/conversations');
         setConversations(data.conversations || []);
       } catch (err) {
@@ -75,10 +71,11 @@ export default function MessagesPage() {
       }
     }
     load();
-  }, [authLoaded, userId, getToken]);
+  }, [authLoaded, userId]);
 
   const openThread = async (conv: Conversation) => {
     setSelectedConv(conv);
+    setSidebarVisible(false);
     setLoadingThread(true);
     try {
       const { data } = await api.get(`/messages/thread/${conv.item_id}/${conv.other_user_id}`);
@@ -93,13 +90,35 @@ export default function MessagesPage() {
     }
   };
 
+  const handleBackToSidebar = () => {
+    setSidebarVisible(true);
+    setSelectedConv(null);
+    setThread([]);
+    setThreadItem(null);
+  };
+
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [thread]);
 
+  // Auto-refresh the active thread every 5 seconds
+  useEffect(() => {
+    if (!selectedConv) return;
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/messages/thread/${selectedConv.item_id}/${selectedConv.other_user_id}`);
+        setThread(data.messages || []);
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [selectedConv]);
+
   const handleSend = async () => {
     if (!newMsg.trim() || !selectedConv) return;
     setSending(true);
+    setSendError(false);
     try {
       await api.post('/messages', {
         item_id: selectedConv.item_id,
@@ -111,7 +130,8 @@ export default function MessagesPage() {
       const { data } = await api.get(`/messages/thread/${selectedConv.item_id}/${selectedConv.other_user_id}`);
       setThread(data.messages || []);
     } catch {
-      // fail silently
+      setSendError(true);
+      setTimeout(() => setSendError(false), 4000);
     } finally {
       setSending(false);
     }
@@ -162,7 +182,7 @@ export default function MessagesPage() {
               </p>
             </div>
 
-            <div className="card" style={{
+            <div className={`card messages-layout${selectedConv ? ' thread-open' : ''}`} style={{
               display: 'grid',
               gridTemplateColumns: '320px 1fr',
               minHeight: 520,
@@ -170,7 +190,7 @@ export default function MessagesPage() {
               padding: 0,
             }}>
               {/* Conversations sidebar */}
-              <div style={{ borderRight: '1px solid var(--border)', overflow: 'auto' }}>
+              <div className="messages-sidebar" style={{ borderRight: '1px solid var(--border)', overflow: 'auto' }}>
                 {loading ? (
                   <div style={{ padding: 20 }}>
                     {[1, 2, 3].map(i => (
@@ -221,7 +241,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Thread / Chat area */}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div className="messages-thread" style={{ display: 'flex', flexDirection: 'column' }}>
                 {!selectedConv ? (
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
@@ -237,6 +257,21 @@ export default function MessagesPage() {
                       borderBottom: '1px solid var(--border)',
                       display: 'flex', alignItems: 'center', gap: 12,
                     }}>
+                      {/* Back button (visible on mobile) */}
+                      <button
+                        className="messages-back-btn"
+                        onClick={handleBackToSidebar}
+                        style={{
+                          display: 'none',
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          padding: '4px',
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                      </button>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
                           {selectedConv.item_title}
@@ -314,6 +349,20 @@ export default function MessagesPage() {
                       )}
                       <div ref={threadEndRef} />
                     </div>
+
+                    {/* Send error banner */}
+                    {sendError && (
+                      <div style={{
+                        padding: '8px 20px',
+                        background: 'var(--danger-subtle)',
+                        color: 'var(--danger)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        textAlign: 'center',
+                      }}>
+                        Failed to send message. Please try again.
+                      </div>
+                    )}
 
                     {/* Input */}
                     <div style={{
