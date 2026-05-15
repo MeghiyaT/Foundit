@@ -67,7 +67,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
   useEffect(() => {
     if (!isMetaMaskInstalled()) return;
     window.ethereum?.request({ method: 'eth_accounts' })
-      .then(async (accounts: string[]) => {
+      .then(async (accounts: any) => {
         if (accounts && accounts.length > 0) {
           // Wallet already connected — rebuild wallet info silently
           const info = await connectWallet();
