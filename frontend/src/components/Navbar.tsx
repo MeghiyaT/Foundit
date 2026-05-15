@@ -110,15 +110,24 @@ export default function Navbar() {
           .then(({ data }) => {
             const adminRole = data.role === 'admin';
             setIsAdmin(adminRole);
-            if (typeof window !== 'undefined') localStorage.setItem('foundit_isAdmin', String(adminRole));
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('foundit_isAdmin', String(adminRole));
+              sessionStorage.setItem('foundit_profile', JSON.stringify(data));
+            }
           })
           .catch(() => {
             setIsAdmin(false);
-            if (typeof window !== 'undefined') localStorage.setItem('foundit_isAdmin', 'false');
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('foundit_isAdmin', 'false');
+              sessionStorage.removeItem('foundit_profile');
+            }
           });
       } else {
         setIsAdmin(false);
-        if (typeof window !== 'undefined') localStorage.removeItem('foundit_isAdmin');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('foundit_isAdmin');
+          sessionStorage.removeItem('foundit_profile');
+        }
       }
     }
   }, [isLoaded, isSignedIn, getToken]);

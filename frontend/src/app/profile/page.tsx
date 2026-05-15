@@ -76,12 +76,25 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!userId) return;
-    Promise.all([
-      api.post('/auth/verify').then(({ data }) => {
+    const cachedProfile = typeof window !== 'undefined' ? sessionStorage.getItem('foundit_profile') : null;
+    let profilePromise = Promise.resolve();
+
+    if (cachedProfile) {
+      const data = JSON.parse(cachedProfile);
+      setProfile(data);
+      setName(data.name || '');
+      setRollNo(data.roll_no || '');
+    } else {
+      profilePromise = api.post('/auth/verify').then(({ data }) => {
         setProfile(data);
         setName(data.name || '');
         setRollNo(data.roll_no || '');
-      }),
+        if (typeof window !== 'undefined') sessionStorage.setItem('foundit_profile', JSON.stringify(data));
+      });
+    }
+
+    Promise.all([
+      profilePromise,
       api.get(`/items?user_id=${userId}&limit=50`).then(({ data }) => {
         const items = data.items || [];
         setStats({
@@ -101,6 +114,7 @@ export default function ProfilePage() {
     try {
       const { data } = await api.put('/auth/profile', { name: name || null, roll_no: rollNo || null });
       setProfile(data);
+      if (typeof window !== 'undefined') sessionStorage.setItem('foundit_profile', JSON.stringify(data));
       setEditing(false);
       setToast('Profile updated!');
       setTimeout(() => setToast(''), 3000);
