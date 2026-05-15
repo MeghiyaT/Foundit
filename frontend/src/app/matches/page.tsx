@@ -9,6 +9,8 @@ import api from '@/lib/api';
 import { formatDate, formatSimilarity } from '@/lib/utils';
 import { useAuth } from '@clerk/nextjs';
 import type { Item } from '@/components/ItemCard';
+import MessageModal from '@/components/MessageModal';
+import ClaimModal from '@/components/ClaimModal';
 
 interface MatchWithItems {
   id: string;
@@ -78,6 +80,8 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'rejected'>('all');
+  const [messageModalState, setMessageModalState] = useState<{ open: boolean; itemId: string; title: string; receiverId: string }>({ open: false, itemId: '', title: '', receiverId: '' });
+  const [claimModalState, setClaimModalState] = useState<{ open: boolean; itemId: string; title: string; otherUserId: string; role: 'owner' | 'finder' }>({ open: false, itemId: '', title: '', otherUserId: '', role: 'owner' });
 
   const fetchMatches = useCallback(async () => {
     if (!userId) return;
@@ -313,24 +317,38 @@ export default function MatchesPage() {
                           Matched {formatDate(match.created_at)}
                         </span>
                         {match.status === 'pending' && (
-                          <Link
-                            href="/messages"
+                          <button
                             className="btn btn-primary"
                             id={`match-message-${match.id}`}
+                            onClick={() => {
+                              const isOwner = userId === match.lost_item?.user_id;
+                              const otherUserId = isOwner ? match.found_item?.user_id : match.lost_item?.user_id;
+                              const title = match.lost_item?.title || match.found_item?.title;
+                              if (otherUserId) {
+                                setMessageModalState({ open: true, itemId: match.lost_item_id, title: title || 'Item', receiverId: otherUserId });
+                              }
+                            }}
                             style={{ marginLeft: 'auto', padding: '7px 18px', fontSize: 13 }}
                           >
                             💬 Message them
-                          </Link>
+                          </button>
                         )}
                         {match.status === 'confirmed' && (
-                          <Link
-                            href="/messages"
+                          <button
                             className="btn btn-primary"
                             id={`match-claim-${match.id}`}
+                            onClick={() => {
+                              const isOwner = userId === match.lost_item?.user_id;
+                              const otherUserId = isOwner ? match.found_item?.user_id : match.lost_item?.user_id;
+                              const title = match.lost_item?.title || match.found_item?.title;
+                              if (otherUserId) {
+                                setClaimModalState({ open: true, itemId: match.lost_item_id, title: title || 'Item', otherUserId, role: isOwner ? 'owner' : 'finder' });
+                              }
+                            }}
                             style={{ marginLeft: 'auto', padding: '7px 18px', fontSize: 13 }}
                           >
-                            🏆 Initiate Claim
-                          </Link>
+                            🏆 {userId === match.lost_item?.user_id ? 'Initiate Claim' : 'Complete Claim'}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -340,6 +358,28 @@ export default function MatchesPage() {
             )}
           </div>
         </main>
+        {messageModalState.open && (
+          <MessageModal
+            itemId={messageModalState.itemId}
+            itemTitle={messageModalState.title}
+            receiverId={messageModalState.receiverId}
+            onClose={() => setMessageModalState(prev => ({ ...prev, open: false }))}
+            onSuccess={() => setMessageModalState(prev => ({ ...prev, open: false }))}
+          />
+        )}
+        {claimModalState.open && (
+          <ClaimModal
+            itemId={claimModalState.itemId}
+            itemTitle={claimModalState.title}
+            otherUserId={claimModalState.otherUserId}
+            role={claimModalState.role}
+            onClose={() => setClaimModalState(prev => ({ ...prev, open: false }))}
+            onComplete={() => {
+              setClaimModalState(prev => ({ ...prev, open: false }));
+              fetchMatches();
+            }}
+          />
+        )}
       </AuthGuard>
     </>
   );
