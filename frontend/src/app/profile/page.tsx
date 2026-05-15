@@ -90,6 +90,9 @@ export default function ProfilePage() {
           resolved: items.filter((i: { status: string }) => i.status === 'closed').length,
         });
       }),
+      api.get('/claims/user/me').then(({ data }) => {
+        setClaims(data.claims || []);
+      }).catch(() => setClaims([])),
     ]).finally(() => setLoading(false));
   }, [userId]);
 

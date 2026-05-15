@@ -210,6 +210,14 @@ async def get_item_claims(
     return {"claims": [_claim_for_response(c) for c in finder_rows]}
 
 
+@router.get("/user/me")
+async def get_my_claims(user: UserProfile = Depends(get_current_user)):
+    """Get all claims where the current user is the finder (for rewards calc)."""
+    supabase = get_supabase_client()
+    res = supabase.table("claims").select("*").eq("finder_id", user.id).execute()
+    return {"claims": [_claim_for_response(c) for c in (res.data or [])]}
+
+
 @router.post("/{claim_id}/approve")
 async def approve_claim(
     claim_id: UUID,
