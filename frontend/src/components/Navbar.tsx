@@ -57,7 +57,21 @@ export default function Navbar() {
           });
         // Fetch conversation count for the badge
         api.get('/messages/conversations')
-          .then(({ data }) => setUnreadCount((data.conversations || []).length))
+          .then(({ data }) => {
+            if (pathname === '/messages') {
+              setUnreadCount(0);
+            } else {
+              const conversations = data.conversations || [];
+              let lastRead = '1970-01-01T00:00:00.000Z';
+              if (typeof window !== 'undefined') {
+                lastRead = localStorage.getItem('foundit_last_read_time') || lastRead;
+              }
+              const unread = conversations.filter((c: any) => 
+                c.created_at > lastRead && c.sender_id !== user?.id
+              ).length;
+              setUnreadCount(unread);
+            }
+          })
           .catch(() => setUnreadCount(0));
       } else {
         setIsAdmin(false);
@@ -65,7 +79,14 @@ export default function Navbar() {
         setUnreadCount(0);
       }
     }
-  }, [isLoaded, isSignedIn, getToken]);
+  }, [isLoaded, isSignedIn, getToken, pathname, user?.id]);
+
+  useEffect(() => {
+    if (pathname === '/messages' && typeof window !== 'undefined') {
+      setUnreadCount(0);
+      localStorage.setItem('foundit_last_read_time', new Date().toISOString());
+    }
+  }, [pathname]);
 
   const visibleNavLinks = NAV_LINKS.filter(link => link.href !== '/admin' || isAdmin);
 
