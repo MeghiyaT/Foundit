@@ -50,6 +50,8 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
   const [txHash, setTxHash] = useState('');
   const [rewardAmount, setRewardAmount] = useState(0);
   const [tokenBalance, setTokenBalance] = useState('');
+  // Why is finder waiting? 'no_claim' = owner hasn't initiated | 'pending_admin' = waiting for approval
+  const [waitingReason, setWaitingReason] = useState<'no_claim' | 'pending_admin'>('no_claim');
 
   // Fetch blockchain config on mount
   useEffect(() => {
@@ -63,13 +65,36 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       .catch(() => setError('Failed to load blockchain config.'));
   }, []);
 
+  // Shared helper: fetch claim status and set the correct step for finders
+  const resolveFinderStep = async () => {
+    try {
+      const { data } = await api.get(`/claims/item/${itemId}`);
+      const claims = data.claims || [];
+      const approved = claims.find((c: { status: string }) => c.status === 'approved');
+      const pending = claims.find((c: { status: string }) => c.status === 'pending');
+      if (approved) {
+        setClaimId(approved.id);
+        setStep('enter_code');
+      } else if (pending) {
+        setClaimId(pending.id);
+        setWaitingReason('pending_admin');
+        setStep('waiting');
+      } else {
+        // No claim initiated by owner yet
+        setWaitingReason('no_claim');
+        setStep('waiting');
+      }
+    } catch {
+      // If we can't fetch claims, stay on wallet step
+    }
+  };
+
   // Auto-detect already-connected wallet and silently restore it
   useEffect(() => {
     if (!isMetaMaskInstalled()) return;
     window.ethereum?.request({ method: 'eth_accounts' })
       .then(async (accounts: any) => {
         if (accounts && accounts.length > 0) {
-          // Wallet already connected — rebuild wallet info silently
           const info = await connectWallet();
           if (!info.isCorrectNetwork) {
             await switchToSepolia();
@@ -78,15 +103,15 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
           } else {
             setWallet(info);
           }
-          // For owners: skip wallet step immediately
-          // For finders: DON'T set step here — the claim status check controls it
-          // (prevents overriding 'waiting' with 'enter_code' when claim is pending)
           if (role === 'owner') {
             setStep('initiate');
+          } else {
+            // Finders: always check claim status
+            await resolveFinderStep();
           }
         }
       })
-      .catch(() => {}); // Silently ignore — user will hit "Connect MetaMask" manually
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
@@ -105,30 +130,26 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
 
   // If finder, check claim status — this controls which step finder sees
   useEffect(() => {
-    if (role === 'finder') {
+    if (role === 'finder' && wallet) {
+      resolveFinderStep();
+    } else if (role === 'finder' && !wallet) {
+      // No wallet yet — also fetch to show correct waiting state even before wallet is connected
       api.get(`/claims/item/${itemId}`)
         .then(({ data }) => {
           const claims = data.claims || [];
-          const approved = claims.find(
-            (c: { status: string }) => c.status === 'approved'
-          );
-          const pending = claims.find(
-            (c: { status: string }) => c.status === 'pending'
-          );
-          if (approved) {
-            // Admin approved — finder can now enter the code
-            setClaimId(approved.id);
-            setStep('enter_code'); // Explicitly set step for approved case
-          } else if (pending) {
-            // Waiting for admin — show holding screen
+          const pending = claims.find((c: { status: string }) => c.status === 'pending');
+          if (pending) {
             setClaimId(pending.id);
-            setStep('waiting');
+            setWaitingReason('pending_admin');
+          } else {
+            setWaitingReason('no_claim');
           }
-          // No claim yet — stay on wallet step (owner hasn't initiated)
+          // Don't change step here — wallet must be connected first
         })
         .catch(() => {});
     }
-  }, [role, itemId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, itemId, wallet]);
 
   const handleConnectWallet = async () => {
     setLoading(true);
@@ -147,28 +168,10 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       } else {
         setWallet(info);
       }
-      // Owners always go to initiate
       if (role === 'owner') {
         setStep('initiate');
       } else {
-        // Finders: check actual claim status before deciding the step
-        try {
-          const { data } = await api.get(`/claims/item/${itemId}`);
-          const claims = data.claims || [];
-          const approved = claims.find((c: { status: string }) => c.status === 'approved');
-          const pending = claims.find((c: { status: string }) => c.status === 'pending');
-          if (approved) {
-            setClaimId(approved.id);
-            setStep('enter_code');
-          } else if (pending) {
-            setClaimId(pending.id);
-            setStep('waiting'); // Admin hasn't approved yet
-          } else {
-            setStep('enter_code'); // No claim — owner may have shared code directly
-          }
-        } catch {
-          setStep('enter_code'); // Fallback
-        }
+        await resolveFinderStep();
       }
     } catch (err: unknown) {
       setError((err as Error).message || 'Failed to connect wallet.');
@@ -507,7 +510,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
           </>
         )}
 
-        {/* ===== STEP: WAITING FOR ADMIN (Finder sees this while pending) ===== */}
+        {/* ===== STEP: WAITING (Finder — either owner hasn't started OR admin hasn't approved) ===== */}
         {role === 'finder' && step === 'waiting' && (
           <>
             <div style={iconBoxStyle('var(--warning)', 'var(--warning-subtle)')}>
@@ -517,10 +520,15 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
               </svg>
             </div>
             <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-              Waiting for Admin Approval
+              {waitingReason === 'no_claim'
+                ? 'Waiting for Owner to Start'
+                : 'Waiting for Admin Approval'}
             </h2>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 20 }}>
-              The owner has initiated the claim for <strong>&quot;{itemTitle}&quot;</strong>. An admin needs to verify it before you can enter the handover code.
+              {waitingReason === 'no_claim'
+                ? <>The owner hasn&apos;t initiated the claim for <strong>&quot;{itemTitle}&quot;</strong> yet. Once they do, an admin will review and you&apos;ll be able to enter the handover code.</>
+                : <>The owner has initiated the claim for <strong>&quot;{itemTitle}&quot;</strong>. An admin needs to verify it before you can enter the handover code.</>
+              }
             </p>
             <div style={{
               padding: '14px 16px', marginBottom: 20,
@@ -529,7 +537,10 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
               borderRadius: 'var(--radius-md)',
               fontSize: 13, color: 'var(--warning)', lineHeight: 1.6,
             }}>
-              ⏳ You&apos;ll receive an email once the admin approves. Come back here to enter the handover code and claim your FNDT reward.
+              {waitingReason === 'no_claim'
+                ? '💬 Ask the owner to initiate the claim from their Messages thread. You\'ll be notified once it\'s ready.'
+                : '⏳ You\'ll receive an email once the admin approves. Come back here to enter the handover code and claim your FNDT reward.'
+              }
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-primary" onClick={onClose}>Got it</button>
