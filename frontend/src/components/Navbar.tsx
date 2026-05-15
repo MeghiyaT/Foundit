@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUser, useAuth, UserButton, SignInButton } from '@clerk/nextjs';
-import api from '@/lib/api';
+import api, { setTokenProvider } from '@/lib/api';
 
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
@@ -19,7 +19,7 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -33,19 +33,26 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    if (isSignedIn) {
-      api.post('/auth/verify')
-        .then(({ data }) => setIsAdmin(data.role === 'admin'))
-        .catch(() => setIsAdmin(false));
-      // Fetch conversation count for the badge
-      api.get('/messages/conversations')
-        .then(({ data }) => setUnreadCount((data.conversations || []).length))
-        .catch(() => setUnreadCount(0));
-    } else {
-      setIsAdmin(false);
-      setUnreadCount(0);
+    if (isLoaded) {
+      setTokenProvider(async () => {
+        if (!isSignedIn) return null;
+        try { return await getToken(); } catch { return null; }
+      });
+
+      if (isSignedIn) {
+        api.post('/auth/verify')
+          .then(({ data }) => setIsAdmin(data.role === 'admin'))
+          .catch(() => setIsAdmin(false));
+        // Fetch conversation count for the badge
+        api.get('/messages/conversations')
+          .then(({ data }) => setUnreadCount((data.conversations || []).length))
+          .catch(() => setUnreadCount(0));
+      } else {
+        setIsAdmin(false);
+        setUnreadCount(0);
+      }
     }
-  }, [isSignedIn]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   const visibleNavLinks = NAV_LINKS.filter(link => link.href !== '/admin' || isAdmin);
 

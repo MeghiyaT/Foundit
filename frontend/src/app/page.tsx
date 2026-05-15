@@ -12,7 +12,7 @@ export default function HomePage() {
         <section style={{
           borderBottom: '1px solid var(--border)',
           background: 'var(--bg-surface)',
-          padding: '48px 0 0',
+          padding: '64px 0 80px',
         }}>
           <div className="container-main">
             <div className="animate-fade-in-up">
