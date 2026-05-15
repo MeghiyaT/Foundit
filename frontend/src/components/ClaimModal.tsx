@@ -147,11 +147,28 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       } else {
         setWallet(info);
       }
-      // Move to next step based on role
+      // Owners always go to initiate
       if (role === 'owner') {
         setStep('initiate');
       } else {
-        setStep('enter_code');
+        // Finders: check actual claim status before deciding the step
+        try {
+          const { data } = await api.get(`/claims/item/${itemId}`);
+          const claims = data.claims || [];
+          const approved = claims.find((c: { status: string }) => c.status === 'approved');
+          const pending = claims.find((c: { status: string }) => c.status === 'pending');
+          if (approved) {
+            setClaimId(approved.id);
+            setStep('enter_code');
+          } else if (pending) {
+            setClaimId(pending.id);
+            setStep('waiting'); // Admin hasn't approved yet
+          } else {
+            setStep('enter_code'); // No claim — owner may have shared code directly
+          }
+        } catch {
+          setStep('enter_code'); // Fallback
+        }
       }
     } catch (err: unknown) {
       setError((err as Error).message || 'Failed to connect wallet.');
@@ -159,6 +176,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       setLoading(false);
     }
   };
+
 
   const handleInitiateClaim = async () => {
     setLoading(true);
