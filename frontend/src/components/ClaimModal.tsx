@@ -135,17 +135,16 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       setSecretCode(data.secret_code);
       setClaimId(data.id);
 
-      // 2. Only attempt blockchain if wallet is connected AND contracts are deployed
       const contractsDeployed = !!(blockchainConfig?.handover_registry_address && blockchainConfig?.reward_token_address);
-      if (wallet && contractsDeployed) {
-        try {
-          const key = computeClaimKey(data.id, wallet.address);
-          setInternalKey(key);
-          await initiateClaimOnChain(blockchainConfig!, data.id, itemId, data.secret_code);
-        } catch (chainErr) {
-          // Blockchain failed — still proceed off-chain
-          console.warn('On-chain initiation failed, proceeding off-chain:', chainErr);
-        }
+      if (!wallet || !contractsDeployed) {
+        throw new Error('MetaMask wallet and contract configuration are strictly required to initiate a claim.');
+      }
+      try {
+        const key = computeClaimKey(data.id, wallet.address);
+        setInternalKey(key);
+        await initiateClaimOnChain(blockchainConfig!, data.id, itemId, data.secret_code);
+      } catch (chainErr) {
+        throw new Error('Blockchain transaction failed or was rejected. Claim cannot proceed without blockchain confirmation.');
       }
 
       setStep('waiting');
@@ -188,46 +187,35 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
 
       const contractsDeployed = !!(blockchainConfig?.handover_registry_address && blockchainConfig?.reward_token_address);
 
-      // 2. Blockchain path — only if wallet connected AND contracts deployed AND we have the key
-      if (wallet && contractsDeployed && activeKey) {
-        setStep('blockchain');
-        try {
-          const hash = await completeClaimOnChain(
-            blockchainConfig!,
-            activeKey,
-            inputCode.trim(),
-          );
-          setTxHash(hash);
+      // 2. Blockchain path — STRICTLY REQUIRED
+      if (!wallet || !contractsDeployed || !activeKey) {
+        throw new Error('Wallet connection and valid claim key are required to complete the claim and receive the FNDT reward.');
+      }
+      
+      setStep('blockchain');
+      try {
+        const hash = await completeClaimOnChain(
+          blockchainConfig!,
+          activeKey,
+          inputCode.trim(),
+        );
+        setTxHash(hash);
 
-          const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
-            secret_code: inputCode.trim().toUpperCase(),
-            tx_hash: hash,
-            finder_wallet: wallet.address,
-          });
-          setRewardAmount(data.reward_amount);
-
-          try {
-            const balance = await getRewardBalance(blockchainConfig!, wallet.address);
-            setTokenBalance(balance);
-          } catch {
-            setTokenBalance('');
-          }
-        } catch (chainErr) {
-          // Blockchain failed — fall back to off-chain verification
-          console.warn('On-chain completion failed, trying off-chain:', chainErr);
-          const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
-            secret_code: inputCode.trim().toUpperCase(),
-            finder_wallet: wallet?.address || null,
-          });
-          setRewardAmount(data.reward_amount);
-        }
-      } else {
-        // 3. Off-chain path — no MetaMask or contracts not deployed
         const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
           secret_code: inputCode.trim().toUpperCase(),
-          finder_wallet: wallet?.address || null,
+          tx_hash: hash,
+          finder_wallet: wallet.address,
         });
         setRewardAmount(data.reward_amount);
+
+        try {
+          const balance = await getRewardBalance(blockchainConfig!, wallet.address);
+          setTokenBalance(balance);
+        } catch {
+          setTokenBalance('');
+        }
+      } catch (chainErr) {
+        throw new Error('Blockchain transaction failed or was rejected. You must confirm the transaction to receive your reward.');
       }
 
       setStep('success');
@@ -321,17 +309,6 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
                   >
                     Install MetaMask ↗
                   </a>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ fontSize: 13, padding: '8px 16px' }}
-                    onClick={() => {
-                      setError('');
-                      if (role === 'owner') setStep('initiate');
-                      else setStep('enter_code');
-                    }}
-                  >
-                    Continue without wallet
-                  </button>
                 </div>
               </div>
             ) : error && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>{error}</p>}
