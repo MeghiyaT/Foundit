@@ -180,3 +180,35 @@ async def get_thread(
             if item_res.data else False
         ),
     }
+
+
+@router.delete("/thread/{item_id}/{other_user_id}")
+async def delete_thread(
+    item_id: UUID,
+    other_user_id: str,
+    user: UserProfile = Depends(get_current_user),
+):
+    """
+    Delete all messages in a thread visible to the current user
+    (messages they sent or received in this conversation).
+    """
+    supabase = get_supabase_client()
+
+    # Messages sent by me to them
+    supabase.table("messages") \
+        .delete() \
+        .eq("item_id", item_id) \
+        .eq("sender_id", user.id) \
+        .eq("receiver_id", other_user_id) \
+        .execute()
+
+    # Messages received from them
+    supabase.table("messages") \
+        .delete() \
+        .eq("item_id", item_id) \
+        .eq("sender_id", other_user_id) \
+        .eq("receiver_id", user.id) \
+        .execute()
+
+    logger.info(f"Thread deleted: item={item_id}, user={user.id}, other={other_user_id}")
+    return {"message": "Conversation deleted."}

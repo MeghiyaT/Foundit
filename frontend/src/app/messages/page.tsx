@@ -167,9 +167,20 @@ export default function MessagesPage() {
 
   const handleClaimComplete = () => {
     setShowClaimModal(false);
-    // Refresh thread and item data
-    if (selectedConv) {
-      openThread(selectedConv);
+    if (selectedConv) openThread(selectedConv);
+  };
+
+  const handleDeleteConversation = async (conv: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't open the thread
+    if (!window.confirm(`Delete the conversation about "${conv.item_title}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/messages/thread/${conv.item_id}/${conv.other_user_id}`);
+      setConversations(prev => prev.filter(c => !(c.item_id === conv.item_id && c.other_user_id === conv.other_user_id)));
+      if (selectedConv?.item_id === conv.item_id && selectedConv?.other_user_id === conv.other_user_id) {
+        handleBackToSidebar();
+      }
+    } catch {
+      // Silently ignore — could show toast here
     }
   };
 
@@ -224,6 +235,7 @@ export default function MessagesPage() {
                           ? 'var(--bg-surface-hover)' : 'transparent',
                         cursor: 'pointer', textAlign: 'left',
                         transition: 'background 150ms ease',
+                        position: 'relative',
                       }}
                     >
                       <div style={{
@@ -242,6 +254,28 @@ export default function MessagesPage() {
                           {conv.other_user_name || conv.other_user_email} · {formatTime(conv.created_at)}
                         </div>
                       </div>
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => handleDeleteConversation(conv, e)}
+                        title="Delete conversation"
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          padding: '4px', color: 'var(--text-tertiary)',
+                          opacity: 0.6, flexShrink: 0,
+                          display: 'flex', alignItems: 'center',
+                          borderRadius: 'var(--radius-sm)',
+                          transition: 'opacity 150ms ease, color 150ms ease',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--danger)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.6'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-tertiary)'; }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                          <path d="M10 11v6M14 11v6"/>
+                          <path d="M9 6V4h6v2"/>
+                        </svg>
+                      </button>
                     </button>
                   ))
                 )}
