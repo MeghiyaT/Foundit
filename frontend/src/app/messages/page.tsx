@@ -80,9 +80,12 @@ export default function MessagesPage() {
     setSidebarVisible(false);
     setLoadingThread(true);
     // Set role EAGERLY from conv.item_owner_id before any async work
-    // This guarantees no stale-default race condition
     if (conv.item_owner_id && userId) {
-      setUserRole(conv.item_owner_id === userId ? 'owner' : 'finder');
+      const eagerRole = conv.item_owner_id === userId ? 'owner' : 'finder';
+      console.log('[DEBUG] EAGER role:', { conv_item_owner_id: conv.item_owner_id, userId, eagerRole });
+      setUserRole(eagerRole);
+    } else {
+      console.log('[DEBUG] No eager role:', { conv_item_owner_id: conv.item_owner_id, userId });
     }
     try {
       const { data } = await api.get(`/messages/thread/${conv.item_id}/${conv.other_user_id}`);
@@ -90,11 +93,13 @@ export default function MessagesPage() {
       setOtherUser(data.other_user);
       const item = data.item || null;
       setThreadItem(item);
-      // Also confirm with backend is_owner (available after deploy), or fall back to item.user_id
+      console.log('[DEBUG] Thread API response:', { is_owner: data.is_owner, item_user_id: item?.user_id, userId });
       if (typeof data.is_owner === 'boolean') {
         setUserRole(data.is_owner ? 'owner' : 'finder');
       } else if (item?.user_id && userId) {
-        setUserRole(item.user_id === userId ? 'owner' : 'finder');
+        const r = item.user_id === userId ? 'owner' : 'finder';
+        console.log('[DEBUG] Fallback role:', { item_user_id: item.user_id, userId, role: r });
+        setUserRole(r);
       }
     } catch {
       setThread([]);
