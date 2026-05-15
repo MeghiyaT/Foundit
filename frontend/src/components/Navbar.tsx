@@ -32,6 +32,18 @@ export default function Navbar() {
   });
   const [unreadCount, setUnreadCount] = useState(0);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isMetaMaskInstalled()) {
+      window.ethereum?.request({ method: 'eth_accounts' })
+        .then((accounts: any) => {
+          if (accounts && accounts.length > 0) {
+            setWalletAddress(accounts[0]);
+          }
+        })
+        .catch(console.error);
+    }
+  }, []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -82,31 +94,37 @@ export default function Navbar() {
             setIsAdmin(false);
             if (typeof window !== 'undefined') localStorage.setItem('foundit_isAdmin', 'false');
           });
-        // Fetch conversation count for the badge
-        api.get('/messages/conversations')
-          .then(({ data }) => {
-            if (pathname === '/messages') {
-              setUnreadCount(0);
-            } else {
-              const conversations = data.conversations || [];
-              let lastRead = '1970-01-01T00:00:00.000Z';
-              if (typeof window !== 'undefined') {
-                lastRead = localStorage.getItem('foundit_last_read_time') || lastRead;
-              }
-              const unread = conversations.filter((c: any) => 
-                c.created_at > lastRead && c.sender_id !== user?.id
-              ).length;
-              setUnreadCount(unread);
-            }
-          })
-          .catch(() => setUnreadCount(0));
       } else {
         setIsAdmin(false);
         if (typeof window !== 'undefined') localStorage.removeItem('foundit_isAdmin');
-        setUnreadCount(0);
       }
     }
-  }, [isLoaded, isSignedIn, getToken, pathname, user?.id]);
+  }, [isLoaded, isSignedIn, getToken]);
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn && user?.id) {
+      // Fetch conversation count for the badge
+      api.get('/messages/conversations')
+        .then(({ data }) => {
+          if (pathname === '/messages') {
+            setUnreadCount(0);
+          } else {
+            const conversations = data.conversations || [];
+            let lastRead = '1970-01-01T00:00:00.000Z';
+            if (typeof window !== 'undefined') {
+              lastRead = localStorage.getItem('foundit_last_read_time') || lastRead;
+            }
+            const unread = conversations.filter((c: any) => 
+              c.created_at > lastRead && c.sender_id !== user.id
+            ).length;
+            setUnreadCount(unread);
+          }
+        })
+        .catch(() => setUnreadCount(0));
+    } else if (isLoaded && !isSignedIn) {
+      setUnreadCount(0);
+    }
+  }, [isLoaded, isSignedIn, pathname, user?.id]);
 
   useEffect(() => {
     if (pathname === '/messages' && typeof window !== 'undefined') {
