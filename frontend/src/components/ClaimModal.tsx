@@ -63,7 +63,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       .catch(() => setError('Failed to load blockchain config.'));
   }, []);
 
-  // Auto-detect already-connected wallet and skip the wallet step
+  // Auto-detect already-connected wallet and silently restore it
   useEffect(() => {
     if (!isMetaMaskInstalled()) return;
     window.ethereum?.request({ method: 'eth_accounts' })
@@ -78,8 +78,12 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
           } else {
             setWallet(info);
           }
-          // Skip the wallet step
-          setStep(role === 'owner' ? 'initiate' : 'enter_code');
+          // For owners: skip wallet step immediately
+          // For finders: DON'T set step here — the claim status check controls it
+          // (prevents overriding 'waiting' with 'enter_code' when claim is pending)
+          if (role === 'owner') {
+            setStep('initiate');
+          }
         }
       })
       .catch(() => {}); // Silently ignore — user will hit "Connect MetaMask" manually
@@ -99,7 +103,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
     }
   }, [role, step]);
 
-  // If finder, check for existing claims on this item
+  // If finder, check claim status — this controls which step finder sees
   useEffect(() => {
     if (role === 'finder') {
       api.get(`/claims/item/${itemId}`)
@@ -112,15 +116,15 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
             (c: { status: string }) => c.status === 'pending'
           );
           if (approved) {
-            // Admin has approved — finder can now enter code
+            // Admin approved — finder can now enter the code
             setClaimId(approved.id);
-            // Don't force step here — let the auto-connect effect handle it
+            setStep('enter_code'); // Explicitly set step for approved case
           } else if (pending) {
-            // Claim exists but waiting for admin — show waiting screen
+            // Waiting for admin — show holding screen
             setClaimId(pending.id);
             setStep('waiting');
           }
-          // No claim yet — owner hasn't initiated one, finder waits
+          // No claim yet — stay on wallet step (owner hasn't initiated)
         })
         .catch(() => {});
     }
