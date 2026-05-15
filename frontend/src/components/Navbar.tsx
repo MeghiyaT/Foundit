@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUser, useAuth, UserButton, SignInButton } from '@clerk/nextjs';
 import api, { setTokenProvider } from '@/lib/api';
+import { connectWallet, isMetaMaskInstalled, switchToSepolia } from '@/lib/blockchain';
 
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
@@ -30,6 +31,25 @@ export default function Navbar() {
     return false;
   });
   const [unreadCount, setUnreadCount] = useState(0);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+
+  const handleConnectWallet = async () => {
+    try {
+      if (!isMetaMaskInstalled()) {
+        alert("MetaMask is not installed! Please install it to connect.");
+        return;
+      }
+      let info = await connectWallet();
+      if (!info.isCorrectNetwork) {
+        await switchToSepolia();
+        info = await connectWallet();
+      }
+      setWalletAddress(info.address);
+    } catch (e: any) {
+      console.error("Wallet connection failed", e);
+      if (e?.message) alert(e.message);
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -185,6 +205,17 @@ export default function Navbar() {
 
         {/* Right side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+          <button
+            className="btn btn-secondary hidden-mobile"
+            onClick={handleConnectWallet}
+            style={{ padding: '6px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Connect Wallet'}
+          </button>
+
           {isSignedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               {(user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress) && (
