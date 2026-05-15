@@ -84,8 +84,8 @@ export default function MessagesPage() {
       setOtherUser(data.other_user);
       const item = data.item || null;
       setThreadItem(item);
-      // Compute role immediately when data arrives — don't rely on lazy render-time computation
-      setUserRole(item?.user_id === userId ? 'owner' : 'finder');
+      // Use the backend-authoritative is_owner flag — no client-side ID comparison
+      setUserRole(data.is_owner === true ? 'owner' : 'finder');
     } catch {
       setThread([]);
       setThreadItem(null);

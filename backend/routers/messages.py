@@ -174,4 +174,8 @@ async def get_thread(
         "messages": all_msgs,
         "item": item_res.data[0] if item_res.data else None,
         "other_user": user_res.data[0] if user_res.data else None,
+        "is_owner": (
+            item_res.data[0]["user_id"] == user.id
+            if item_res.data else False
+        ),
     }
