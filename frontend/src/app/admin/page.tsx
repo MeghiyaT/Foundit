@@ -163,6 +163,26 @@ export default function AdminPage() {
     });
   }
 
+  async function cancelClaim(claimId: string) {
+    setConfirmModal({
+      message: 'Cancel this approved claim? The owner will need to initiate a new one.',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setActionLoading(claimId);
+        try {
+          await api.post(`/admin/claims/${claimId}/cancel`);
+          setClaims((prev) => prev.map((c) => c.id === claimId ? { ...c, status: 'rejected' } : c));
+          showToast('Claim cancelled. Owner can now re-initiate.', 'success');
+        } catch (err: unknown) {
+          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          showToast(detail || 'Failed to cancel claim.', 'error');
+        } finally {
+          setActionLoading(null);
+        }
+      },
+    });
+  }
+
   const tabStyle = (isActive: boolean): React.CSSProperties => ({
     padding: '10px 20px',
     fontSize: 14,
@@ -340,7 +360,9 @@ export default function AdminPage() {
                               {claim.items?.title || 'Unknown'}
                             </td>
                             <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: 13 }}>
-                              {claim.claimant?.name || claim.claimant?.email || '—'}
+                              {claim.claimant?.name || claim.claimant?.email
+                                ? (claim.claimant.name || claim.claimant.email)
+                                : claim.claimant_id?.split('@')[0] || '—'}
                             </td>
                             <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: 13 }}>
                               {claim.finder?.name || claim.finder?.email || '—'}
@@ -399,9 +421,18 @@ export default function AdminPage() {
                                   </>
                                 )}
                                 {claim.status === 'approved' && (
-                                  <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                                    Awaiting handover…
-                                  </span>
+                                  <>
+                                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginRight: 6 }}>Awaiting handover…</span>
+                                    <button
+                                      id={`cancel-claim-${claim.id}`}
+                                      className="btn btn-danger"
+                                      style={{ padding: '5px 12px', fontSize: 12 }}
+                                      onClick={() => cancelClaim(claim.id)}
+                                      disabled={actionLoading === claim.id}
+                                    >
+                                      {actionLoading === claim.id ? '…' : 'Cancel'}
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </td>

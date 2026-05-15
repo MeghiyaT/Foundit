@@ -113,3 +113,18 @@ async def admin_list_claims(
     claims = [_claim_for_response(c) for c in (result.data or [])]
     return {"claims": claims, "page": page, "limit": limit}
 
+@router.post("/claims/{claim_id}/cancel")
+async def admin_cancel_claim(
+    claim_id: UUID,
+    _admin: UserProfile = Depends(require_admin),
+):
+    """Admin cancels an approved claim, resetting it so users can re-initiate."""
+    supabase = get_supabase_client()
+    result = supabase.table("claims") \
+        .update({"status": "rejected"}) \
+        .eq("id", claim_id) \
+        .in_("status", ["approved", "pending"]) \
+        .execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Claim not found or already completed.")
+    return {"message": "Claim cancelled.", "claim": result.data[0]}
