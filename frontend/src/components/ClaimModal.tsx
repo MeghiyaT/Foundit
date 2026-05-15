@@ -63,6 +63,29 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       .catch(() => setError('Failed to load blockchain config.'));
   }, []);
 
+  // Auto-detect already-connected wallet and skip the wallet step
+  useEffect(() => {
+    if (!isMetaMaskInstalled()) return;
+    window.ethereum?.request({ method: 'eth_accounts' })
+      .then(async (accounts: string[]) => {
+        if (accounts && accounts.length > 0) {
+          // Wallet already connected — rebuild wallet info silently
+          const info = await connectWallet();
+          if (!info.isCorrectNetwork) {
+            await switchToSepolia();
+            const updated = await connectWallet();
+            setWallet(updated);
+          } else {
+            setWallet(info);
+          }
+          // Skip the wallet step
+          setStep(role === 'owner' ? 'initiate' : 'enter_code');
+        }
+      })
+      .catch(() => {}); // Silently ignore — user will hit "Connect MetaMask" manually
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
   // Defensive: if role detection is wrong, never let owners see finder-only steps (and vice versa).
   useEffect(() => {
     if (role === 'owner' && (step === 'enter_code' || step === 'blockchain')) {
