@@ -23,7 +23,12 @@ export default function Navbar() {
   const { user } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('foundit_isAdmin') === 'true';
+    }
+    return false;
+  });
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -41,14 +46,22 @@ export default function Navbar() {
 
       if (isSignedIn) {
         api.post('/auth/verify')
-          .then(({ data }) => setIsAdmin(data.role === 'admin'))
-          .catch(() => setIsAdmin(false));
+          .then(({ data }) => {
+            const adminRole = data.role === 'admin';
+            setIsAdmin(adminRole);
+            if (typeof window !== 'undefined') localStorage.setItem('foundit_isAdmin', String(adminRole));
+          })
+          .catch(() => {
+            setIsAdmin(false);
+            if (typeof window !== 'undefined') localStorage.setItem('foundit_isAdmin', 'false');
+          });
         // Fetch conversation count for the badge
         api.get('/messages/conversations')
           .then(({ data }) => setUnreadCount((data.conversations || []).length))
           .catch(() => setUnreadCount(0));
       } else {
         setIsAdmin(false);
+        if (typeof window !== 'undefined') localStorage.removeItem('foundit_isAdmin');
         setUnreadCount(0);
       }
     }
