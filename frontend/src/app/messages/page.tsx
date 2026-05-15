@@ -52,6 +52,7 @@ export default function MessagesPage() {
   const [otherUser, setOtherUser] = useState<{ email: string; name?: string } | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [userRole, setUserRole] = useState<'owner' | 'finder'>('finder');
   const { userId, isLoaded: authLoaded } = useAuth();
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -81,7 +82,10 @@ export default function MessagesPage() {
       const { data } = await api.get(`/messages/thread/${conv.item_id}/${conv.other_user_id}`);
       setThread(data.messages || []);
       setOtherUser(data.other_user);
-      setThreadItem(data.item || null);
+      const item = data.item || null;
+      setThreadItem(item);
+      // Compute role immediately when data arrives — don't rely on lazy render-time computation
+      setUserRole(item?.user_id === userId ? 'owner' : 'finder');
     } catch {
       setThread([]);
       setThreadItem(null);
@@ -95,6 +99,7 @@ export default function MessagesPage() {
     setSelectedConv(null);
     setThread([]);
     setThreadItem(null);
+    setUserRole('finder');
   };
 
   useEffect(() => {
@@ -147,12 +152,6 @@ export default function MessagesPage() {
     const diffHrs = Math.floor(diffMins / 60);
     if (diffHrs < 24) return `${diffHrs}h ago`;
     return d.toLocaleDateString();
-  };
-
-  // Determine the current user's role relative to the item
-  const getUserRole = (): 'owner' | 'finder' => {
-    if (!threadItem || !userId) return 'finder';
-    return threadItem.user_id === userId ? 'owner' : 'finder';
   };
 
   // Can the user initiate a claim from this thread?
@@ -292,7 +291,7 @@ export default function MessagesPage() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                             </svg>
-                            {getUserRole() === 'owner' ? 'Initiate Claim' : 'Complete Claim'}
+                            {userRole === 'owner' ? 'Initiate Claim' : 'Complete Claim'}
                           </button>
                         )}
                         {threadItem?.status === 'closed' && (
@@ -407,7 +406,7 @@ export default function MessagesPage() {
             itemId={selectedConv.item_id}
             itemTitle={selectedConv.item_title}
             otherUserId={selectedConv.other_user_id}
-            role={getUserRole()}
+            role={userRole}
             onClose={() => setShowClaimModal(false)}
             onComplete={handleClaimComplete}
           />
