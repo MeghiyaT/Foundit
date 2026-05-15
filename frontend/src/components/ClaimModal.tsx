@@ -92,24 +92,35 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       setStep('initiate');
       setError('');
     }
-    if (role === 'finder' && (step === 'initiate' || step === 'waiting')) {
+    // Note: finder CAN be in 'waiting' (pending admin approval), so don't redirect that
+    if (role === 'finder' && (step === 'initiate')) {
       setStep('enter_code');
       setError('');
     }
   }, [role, step]);
 
-  // If finder, check for existing approved claims
+  // If finder, check for existing claims on this item
   useEffect(() => {
     if (role === 'finder') {
       api.get(`/claims/item/${itemId}`)
         .then(({ data }) => {
-          const approved = (data.claims || []).find(
-            (c: { status: string; finder_id: string }) => c.status === 'approved' && c.finder_id !== null
+          const claims = data.claims || [];
+          const approved = claims.find(
+            (c: { status: string }) => c.status === 'approved'
+          );
+          const pending = claims.find(
+            (c: { status: string }) => c.status === 'pending'
           );
           if (approved) {
+            // Admin has approved — finder can now enter code
             setClaimId(approved.id);
-            setStep('wallet');
+            // Don't force step here — let the auto-connect effect handle it
+          } else if (pending) {
+            // Claim exists but waiting for admin — show waiting screen
+            setClaimId(pending.id);
+            setStep('waiting');
           }
+          // No claim yet — owner hasn't initiated one, finder waits
         })
         .catch(() => {});
     }
@@ -396,7 +407,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
                 <li>Share it only <strong>in person</strong> during the handover</li>
                 <li>The finder enters the code to prove they received the item</li>
                 <li>An admin must approve the claim before completion</li>
-                <li>The code expires in <strong>1 hour</strong></li>
+                <li>The code expires in <strong>24 hours</strong></li>
               </ul>
             </div>
 
@@ -463,7 +474,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
               borderRadius: 'var(--radius-md)',
               fontSize: 13, color: 'var(--warning)', lineHeight: 1.5,
             }}>
-              ⏱️ This code expires in <strong>1 hour</strong>. An admin must approve the claim before the finder can complete it.
+              ⏱️ This code expires in <strong>24 hours</strong>. An admin must approve the claim before the finder can complete it.
             </div>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -474,7 +485,37 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
           </>
         )}
 
-        {/* ===== STEP: ENTER CODE (Finder) ===== */}
+        {/* ===== STEP: WAITING FOR ADMIN (Finder sees this while pending) ===== */}
+        {role === 'finder' && step === 'waiting' && (
+          <>
+            <div style={iconBoxStyle('var(--warning)', 'var(--warning-subtle)')}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+              Waiting for Admin Approval
+            </h2>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 20 }}>
+              The owner has initiated the claim for <strong>&quot;{itemTitle}&quot;</strong>. An admin needs to verify it before you can enter the handover code.
+            </p>
+            <div style={{
+              padding: '14px 16px', marginBottom: 20,
+              background: 'var(--warning-subtle)',
+              border: '1px solid rgba(217, 119, 6, 0.2)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 13, color: 'var(--warning)', lineHeight: 1.6,
+            }}>
+              ⏳ You&apos;ll receive an email once the admin approves. Come back here to enter the handover code and claim your FNDT reward.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={onClose}>Got it</button>
+            </div>
+          </>
+        )}
+
+        {/* ===== STEP: ENTER CODE (Finder — only after admin approved) ===== */}
         {role === 'finder' && step === 'enter_code' && (
           <>
             <div style={iconBoxStyle('var(--accent)', 'var(--accent-subtle)')}>

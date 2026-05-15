@@ -32,7 +32,7 @@ from services.email_service import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/claims", tags=["claims"])
 
-CLAIM_EXPIRY_HOURS = 1
+CLAIM_EXPIRY_HOURS = 24
 
 
 def _claim_for_response(row: dict) -> dict:
