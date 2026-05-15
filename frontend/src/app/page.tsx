@@ -1,42 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useAuth } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
-import api from '@/lib/api';
-
-interface Stats {
-  total_items: number;
-  open: number;
-  matched: number;
-  closed: number;
-  resolution_rate: number;
-}
 
 export default function HomePage() {
-  const { isSignedIn } = useAuth();
-  const [stats, setStats] = useState<Stats | null>(null);
-
-  useEffect(() => {
-    void isSignedIn;
-    api.get('/admin/stats')
-      .then(({ data }) => setStats(data))
-      .catch(() => setStats(null));
-  }, [isSignedIn]);
-
-  const statItems = stats ? [
-    { label: 'Items reported', value: stats.total_items, icon: '📦', highlight: false },
-    { label: 'Awaiting match', value: stats.open, icon: '🔍', highlight: false },
-    { label: 'Matched', value: stats.matched, icon: '🤝', highlight: false },
-    { label: 'Resolved', value: stats.closed, icon: '✅', highlight: true },
-  ] : [
-    { label: 'Items reported', value: '—', icon: '📦', highlight: false },
-    { label: 'Awaiting match', value: '—', icon: '🔍', highlight: false },
-    { label: 'Matched', value: '—', icon: '🤝', highlight: false },
-    { label: 'Resolved', value: '—', icon: '✅', highlight: true },
-  ];
-
   return (
     <>
       <Navbar />
@@ -91,35 +58,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Live stats bar */}
-            <div style={{
-              display: 'flex', gap: 0, marginTop: 40,
-              borderTop: '1px solid var(--border)',
-              flexWrap: 'wrap',
-            }}>
-              {statItems.map(({ label, value, icon, highlight }, i) => (
-                <div
-                  key={label}
-                  style={{
-                    flex: '1 1 140px',
-                    padding: '20px 24px',
-                    borderRight: i < 3 ? '1px solid var(--border)' : 'none',
-                  }}
-                >
-                  <div style={{ fontSize: 22, marginBottom: 4 }}>{icon}</div>
-                  <div style={{
-                    fontSize: 28, fontWeight: 800,
-                    color: highlight ? 'var(--success)' : 'var(--text-primary)',
-                    letterSpacing: '-0.02em', marginBottom: 2,
-                  }}>
-                    {value}
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {label}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 
