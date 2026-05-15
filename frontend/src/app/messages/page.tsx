@@ -18,6 +18,7 @@ interface Conversation {
   other_user_id: string;
   item_title: string;
   item_image_url?: string;
+  item_owner_id?: string;
   other_user_email: string;
   other_user_name?: string;
 }
@@ -78,14 +79,23 @@ export default function MessagesPage() {
     setSelectedConv(conv);
     setSidebarVisible(false);
     setLoadingThread(true);
+    // Set role EAGERLY from conv.item_owner_id before any async work
+    // This guarantees no stale-default race condition
+    if (conv.item_owner_id && userId) {
+      setUserRole(conv.item_owner_id === userId ? 'owner' : 'finder');
+    }
     try {
       const { data } = await api.get(`/messages/thread/${conv.item_id}/${conv.other_user_id}`);
       setThread(data.messages || []);
       setOtherUser(data.other_user);
       const item = data.item || null;
       setThreadItem(item);
-      // Use the backend-authoritative is_owner flag — no client-side ID comparison
-      setUserRole(data.is_owner === true ? 'owner' : 'finder');
+      // Also confirm with backend is_owner (available after deploy), or fall back to item.user_id
+      if (typeof data.is_owner === 'boolean') {
+        setUserRole(data.is_owner ? 'owner' : 'finder');
+      } else if (item?.user_id && userId) {
+        setUserRole(item.user_id === userId ? 'owner' : 'finder');
+      }
     } catch {
       setThread([]);
       setThreadItem(null);
