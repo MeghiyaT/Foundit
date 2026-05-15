@@ -32,11 +32,17 @@ export default function Navbar() {
   });
   const [unreadCount, setUnreadCount] = useState(0);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const handleConnectWallet = async () => {
     try {
       if (!isMetaMaskInstalled()) {
-        alert("MetaMask is not installed! Please install it to connect.");
+        showToast("MetaMask is not installed! Please install it to connect.", "error");
         return;
       }
       let info = await connectWallet();
@@ -45,9 +51,10 @@ export default function Navbar() {
         info = await connectWallet();
       }
       setWalletAddress(info.address);
+      showToast("Wallet connected successfully!", "success");
     } catch (e: any) {
       console.error("Wallet connection failed", e);
-      if (e?.message) alert(e.message);
+      if (e?.message) showToast(e.message, "error");
     }
   };
 
@@ -205,19 +212,18 @@ export default function Navbar() {
 
         {/* Right side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
-          <button
-            className="btn btn-secondary hidden-mobile"
-            onClick={handleConnectWallet}
-            style={{ padding: '6px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-            </svg>
-            {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Connect Wallet'}
-          </button>
-
           {isSignedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                className="btn btn-secondary hidden-mobile"
+                onClick={handleConnectWallet}
+                style={{ padding: '6px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Connect Wallet'}
+              </button>
               {(user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress) && (
                 <span className="hidden-mobile" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                   {user.fullName || user.username || user.primaryEmailAddress?.emailAddress}
@@ -299,6 +305,30 @@ export default function Navbar() {
         }
       `}
       </style>
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          role="alert"
+          style={{
+            position: 'fixed',
+            bottom: 32,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 600,
+            padding: '12px 24px',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 14,
+            fontWeight: 600,
+            color: 'white',
+            background: toast.type === 'success' ? 'var(--success)' : 'var(--danger)',
+            boxShadow: 'var(--shadow-lg)',
+            animation: 'fadeInUp 0.2s ease',
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
     </header>
   );
 }
