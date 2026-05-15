@@ -201,7 +201,7 @@ export default function MessagesPage() {
                   <div style={{ padding: 40, textAlign: 'center' }}>
                     <div style={{ fontSize: 36, marginBottom: 12 }}>💬</div>
                     <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-                      No messages yet. Start by claiming an item!
+                      No messages yet. Go to Matches and message someone about a match!
                     </p>
                   </div>
                 ) : (

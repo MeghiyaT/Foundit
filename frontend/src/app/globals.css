@@ -281,7 +281,7 @@ body {
   transition: box-shadow var(--transition-base), transform var(--transition-base), border-color var(--transition-base);
 }
 
-.card:hover {
+.card-hover:hover {
   box-shadow: var(--shadow-md);
   border-color: var(--accent);
 }

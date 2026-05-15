@@ -93,7 +93,7 @@ export default function HomePage() {
                 {
                   step: '02',
                   title: 'AI finds matches',
-                  desc: 'Text embeddings compare your item against every found object in the database.',
+                  desc: 'Our AI visually and textually compares your item against every found object in the database automatically.',
                   icon: (
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="11" cy="11" r="8"/>
