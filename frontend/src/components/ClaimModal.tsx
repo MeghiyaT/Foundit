@@ -220,11 +220,12 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
     setLoading(true);
     setError('');
     try {
-      // 1. Find the approved claim for this item
+      // 1. Ensure we have the approved claim ID and on-chain key
       let activeClaimId = claimId;
       let activeKey = internalKey;
 
-      if (!activeClaimId) {
+      // Always fetch claim if we're missing either the ID or the key
+      if (!activeClaimId || !activeKey) {
         const { data } = await api.get(`/claims/item/${itemId}`);
         const approved = (data.claims || []).find(
           (c: { status: string }) => c.status === 'approved'
@@ -237,10 +238,14 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         activeClaimId = approved.id;
         setClaimId(activeClaimId);
 
-        // Recompute key only if wallet + owner_wallet both available
-        if (!activeKey && approved.owner_wallet && wallet) {
+        // Compute on-chain key from claim ID + owner wallet
+        if (approved.owner_wallet && wallet) {
           activeKey = computeClaimKey(activeClaimId, approved.owner_wallet);
           setInternalKey(activeKey);
+        } else if (!approved.owner_wallet) {
+          setError('This claim is missing the owner wallet address. Please ask the owner to re-initiate the claim.');
+          setLoading(false);
+          return;
         }
       }
 
@@ -250,6 +255,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
       if (!wallet || !contractsDeployed || !activeKey) {
         throw new Error('Wallet connection and valid claim key are required to complete the claim and receive the FNDT reward.');
       }
+
       
       setStep('blockchain');
       try {
