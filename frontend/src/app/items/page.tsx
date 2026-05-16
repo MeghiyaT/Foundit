@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
 import ItemCard, { type Item } from '@/components/ItemCard';
-import api from '@/lib/api';
+import api, { cachedGet } from '@/lib/api';
 import { CATEGORIES } from '@/lib/utils';
 
 const SKELETON_COUNT = 12;
@@ -48,8 +48,17 @@ export default function ItemsPage() {
       params.set('page', String(p));
       params.set('limit', String(PAGE_SIZE));
 
-      const { data } = await api.get(`/items?${params}`);
-      const newItems: Item[] = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+      const url = `/items?${params}`;
+      // Use cache only for first-page loads (navigating back feels instant)
+      const isFirstPage = p === 1 && !searchTerm.trim();
+      let newItems: Item[];
+      if (isFirstPage) {
+        const data = await cachedGet<{ items: Item[] }>(url);
+        newItems = Array.isArray(data.items) ? data.items : [];
+      } else {
+        const { data } = await api.get(url);
+        newItems = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+      }
       setItems(reset ? newItems : (prev) => [...prev, ...newItems]);
       setHasMore(newItems.length === PAGE_SIZE);
       if (!reset) setPage(p + 1);
@@ -60,6 +69,7 @@ export default function ItemsPage() {
       setLoading(false);
     }
   }, [typeFilter, categoryFilter, searchTerm, page]);
+
 
   // Reset on filter change (including debounced search)
   useEffect(() => {

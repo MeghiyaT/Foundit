@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
-import api from '@/lib/api';
+import api, { cachedGet } from '@/lib/api';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { formatDate } from '@/lib/utils';
 import Link from 'next/link';
@@ -96,15 +96,15 @@ export default function ProfilePage() {
 
     Promise.all([
       profilePromise,
-      api.get(`/items?user_id=${userId}&limit=50`).then(({ data }) => {
-        const items = data.items || [];
+      cachedGet<{ items: unknown[] }>(`/items?user_id=${userId}&limit=50`).then((data) => {
+        const all = data.items || [];
         setStats({
-          lost: items.filter((i: { type: string }) => i.type === 'lost').length,
-          found: items.filter((i: { type: string }) => i.type === 'found').length,
-          resolved: items.filter((i: { status: string }) => i.status === 'closed').length,
+          lost: all.filter((i: unknown) => (i as { type: string }).type === 'lost').length,
+          found: all.filter((i: unknown) => (i as { type: string }).type === 'found').length,
+          resolved: all.filter((i: unknown) => (i as { status: string }).status === 'closed').length,
         });
-      }),
-      api.get('/claims/user/me').then(({ data }) => {
+      }).catch(() => {}),
+      cachedGet<{ claims: Claim[] }>('/claims/user/me').then((data) => {
         setClaims(data.claims || []);
       }).catch(() => setClaims([])),
     ]).finally(() => setLoading(false));

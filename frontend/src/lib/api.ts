@@ -10,15 +10,93 @@ const api = axios.create({
 
 let tokenProvider: (() => Promise<string | null>) | null = null;
 
-/**
- * Register a dynamic token provider to fetch the latest token before every request.
- * Called from components that have access to useAuth() (like AuthGuard).
- */
 export function setTokenProvider(provider: () => Promise<string | null>) {
   tokenProvider = provider;
 }
 
-// Intercept requests to dynamically inject the fresh token
+// ─── Simple in-memory response cache (stale-while-revalidate) ────────────────
+// Caches GET responses for TTL_MS. Subsequent calls return the stale value
+// instantly while the fresh fetch runs in the background.
+
+const TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_VERSION = 'v2';
+
+interface CacheEntry {
+  data: unknown;
+  ts: number;
+}
+
+const memCache = new Map<string, CacheEntry>();
+
+function readCache(key: string): CacheEntry | null {
+  // In-memory first
+  const mem = memCache.get(key);
+  if (mem) return mem;
+  // Fallback to localStorage (survives navigation but not hard-reload memory)
+  try {
+    const raw = localStorage.getItem(`fc_${CACHE_VERSION}_${key}`);
+    if (raw) {
+      const entry: CacheEntry = JSON.parse(raw);
+      memCache.set(key, entry);
+      return entry;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function writeCache(key: string, data: unknown) {
+  const entry: CacheEntry = { data, ts: Date.now() };
+  memCache.set(key, entry);
+  try {
+    localStorage.setItem(`fc_${CACHE_VERSION}_${key}`, JSON.stringify(entry));
+  } catch { /* ignore quota errors */ }
+}
+
+/**
+ * Invalidate all cached entries matching a prefix.
+ * Call this after mutations so stale data is cleared.
+ * e.g. invalidateCache('/admin') clears all admin endpoints.
+ */
+export function invalidateCache(prefix = '') {
+  for (const key of [...memCache.keys()]) {
+    if (key.startsWith(prefix)) memCache.delete(key);
+  }
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(`fc_${CACHE_VERSION}_`) && k.includes(prefix)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+/**
+ * Cached GET — returns stale data immediately (if within TTL) while
+ * fetching fresh data in the background.
+ */
+export async function cachedGet<T = unknown>(url: string, fresh = false): Promise<T> {
+  const entry = readCache(url);
+  const isStale = !entry || (Date.now() - entry.ts > TTL_MS);
+
+  if (entry && !fresh) {
+    if (!isStale) {
+      // Fresh enough — return immediately
+      return entry.data as T;
+    }
+    // Stale — return immediately AND revalidate in background
+    api.get(url).then(({ data }) => writeCache(url, data)).catch(() => {});
+    return entry.data as T;
+  }
+
+  // No cache or forced fresh — await the real request
+  const { data } = await api.get(url);
+  writeCache(url, data);
+  return data as T;
+}
+
+// ─── Axios interceptors ────────────────────────────────────────────────────────
+
 api.interceptors.request.use(async (config) => {
   if (tokenProvider) {
     const token = await tokenProvider();
@@ -27,16 +105,13 @@ api.interceptors.request.use(async (config) => {
     }
   }
   return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+}, (error) => Promise.reject(error));
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       const currentPath = window.location.pathname + window.location.search;
-      // Don't redirect if already on sign-in/sign-up to avoid loops
       if (!currentPath.startsWith('/sign-in') && !currentPath.startsWith('/sign-up')) {
         window.location.href = `/sign-in?redirect=${encodeURIComponent(currentPath)}`;
       }

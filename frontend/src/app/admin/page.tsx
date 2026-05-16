@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
-import api from '@/lib/api';
+import api, { cachedGet, invalidateCache } from '@/lib/api';
 import { formatDate, capitalize, getStatusClass } from '@/lib/utils';
 import type { Item } from '@/components/ItemCard';
 
@@ -71,6 +72,7 @@ function getClaimStatusBg(status: string): string {
 }
 
 export default function AdminPage() {
+  const { isLoaded, isSignedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<'items' | 'claims'>('items');
   const [stats, setStats] = useState<Stats | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -91,29 +93,35 @@ export default function AdminPage() {
 
   const fetchItems = useCallback(async (status = statusFilter) => {
     const params = status ? `?status=${status}` : '';
-    const { data } = await api.get(`/admin/items${params}`);
+    const data = await cachedGet<{ items: Item[] }>(`/admin/items${params}`);
     setItems(data.items || []);
   }, [statusFilter]);
 
   const fetchClaims = useCallback(async (status = claimStatusFilter) => {
     const params = status ? `?status=${status}` : '';
-    const { data } = await api.get(`/admin/claims${params}`);
+    const data = await cachedGet<{ claims: Claim[] }>(`/admin/claims${params}`);
     setClaims(data.claims || []);
   }, [claimStatusFilter]);
 
   useEffect(() => {
+    // Wait for Clerk to finish loading and confirm the user is signed in
+    // before making admin API calls. Without this guard, hard refreshes
+    // fire requests before the JWT token provider is registered → 403.
+    if (!isLoaded || !isSignedIn) return;
+    setLoading(true);
     Promise.all([
       api.get('/admin/stats').then((r) => setStats(r.data)),
       fetchItems(),
       fetchClaims(),
     ]).catch(() => setError('Failed to load admin data. Are you an admin?')).finally(() => setLoading(false));
-  }, [fetchItems, fetchClaims]);
+  }, [isLoaded, isSignedIn, fetchItems, fetchClaims]);
 
   async function closeItem(itemId: string) {
     setActionLoading(itemId);
     await api.post(`/admin/items/${itemId}/close`);
     setItems((prev) => prev.map((i) => i.id === itemId ? { ...i, status: 'closed' } : i));
     setActionLoading(null);
+    invalidateCache('/admin');
   }
 
   async function deleteItem(itemId: string) {
@@ -125,6 +133,7 @@ export default function AdminPage() {
         await api.delete(`/admin/items/${itemId}`);
         setItems((prev) => prev.filter((i) => i.id !== itemId));
         setActionLoading(null);
+        invalidateCache('/admin');
         showToast('Item deleted successfully.', 'success');
       },
     });
@@ -135,6 +144,7 @@ export default function AdminPage() {
     try {
       await api.post(`/claims/${claimId}/approve`);
       setClaims((prev) => prev.map((c) => c.id === claimId ? { ...c, status: 'approved' } : c));
+      invalidateCache('/admin/claims');
       showToast('✅ Claim approved.', 'success');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
