@@ -256,8 +256,8 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         throw new Error('Wallet connection and valid claim key are required to complete the claim and receive the FNDT reward.');
       }
 
-      
       setStep('blockchain');
+      let chainSucceeded = false;
       try {
         const hash = await completeClaimOnChain(
           blockchainConfig!,
@@ -265,6 +265,7 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
           inputCode.trim(),
         );
         setTxHash(hash);
+        chainSucceeded = true;
 
         const { data } = await api.post(`/claims/${activeClaimId}/complete`, {
           secret_code: inputCode.trim().toUpperCase(),
@@ -279,15 +280,31 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         } catch {
           setTokenBalance('');
         }
-      } catch (chainErr) {
-        throw new Error('Blockchain transaction failed or was rejected. You must confirm the transaction to receive your reward.');
+      } catch (chainErr: unknown) {
+        // Always reset back to enter_code so the user isn’t stuck on the spinner
+        setStep('enter_code');
+        const msg = (chainErr as Error)?.message || '';
+        if (msg.includes('Claim not approved') || msg.includes('execution reverted')) {
+          throw new Error(
+            'The owner’s claim has not been registered on the blockchain yet. ' +
+            'Ask the owner to re-initiate the claim — they must confirm the MetaMask transaction when it appears.'
+          );
+        }
+        if (msg.includes('user rejected') || msg.includes('User denied')) {
+          throw new Error('Transaction was cancelled in MetaMask. Please try again and confirm when prompted.');
+        }
+        if (!chainSucceeded) {
+          throw new Error('Blockchain transaction failed. Please check your MetaMask and try again.');
+        }
+        throw chainErr;
       }
 
       setStep('success');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(detail || (err as Error).message || 'Failed to complete claim.');
-      if (step === 'blockchain') setStep('enter_code');
+      // Ensure we’re never left on the blockchain spinner
+      setStep((prev) => prev === 'blockchain' ? 'enter_code' : prev);
     } finally {
       setLoading(false);
     }
