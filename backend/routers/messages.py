@@ -133,6 +133,8 @@ async def get_conversations(
         c["item_owner_id"] = item_info.get("user_id")
         c["other_user_email"] = user_info.get("email", "Unknown")
         c["other_user_name"] = user_info.get("name")
+        # Expose the latest message timestamp explicitly for unread-count logic
+        c["last_message_at"] = c["created_at"]
 
     return {"conversations": conversations}
 

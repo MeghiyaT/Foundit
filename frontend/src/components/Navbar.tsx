@@ -145,9 +145,11 @@ export default function Navbar() {
             if (typeof window !== 'undefined') {
               lastRead = localStorage.getItem('foundit_last_read_time') || lastRead;
             }
-            const unread = conversations.filter((c: any) => 
-              c.created_at > lastRead && c.sender_id !== user.id
-            ).length;
+            // Use last_message_at (most recent activity) not created_at (conversation start)
+            const unread = conversations.filter((c: any) => {
+              const msgTime = c.last_message_at || c.created_at;
+              return msgTime > lastRead && c.sender_id !== user.id;
+            }).length;
             setUnreadCount(unread);
           }
         })
@@ -261,6 +263,32 @@ export default function Navbar() {
 
         {/* Right side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+          {/* Dark mode toggle — always visible, even before login */}
+          <button
+            onClick={toggleDarkMode}
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{
+              background: 'none', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+              padding: '6px 8px', display: 'inline-flex', alignItems: 'center',
+              color: 'var(--text-secondary)', transition: 'all 150ms ease',
+            }}
+          >
+            {darkMode ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            )}
+          </button>
+
           {isSignedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
@@ -272,31 +300,6 @@ export default function Navbar() {
                   <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                 </svg>
                 {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Connect Wallet'}
-              </button>
-              {/* Dark mode toggle */}
-              <button
-                onClick={toggleDarkMode}
-                title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                style={{
-                  background: 'none', border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  padding: '6px 8px', display: 'inline-flex', alignItems: 'center',
-                  color: 'var(--text-secondary)', transition: 'all 150ms ease',
-                }}
-              >
-                {darkMode ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                  </svg>
-                )}
               </button>
               {(user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress) && (
                 <span className="hidden-mobile" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
@@ -339,6 +342,7 @@ export default function Navbar() {
           </button>
         </div>
       </div>
+
 
       {/* Mobile menu */}
       {menuOpen && (

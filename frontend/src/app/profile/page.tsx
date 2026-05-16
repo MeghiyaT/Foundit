@@ -20,6 +20,7 @@ interface UserProfile {
 interface Claim {
   id: string;
   item_id: string;
+  item_title?: string;
   status: string;
   reward_amount?: number;
   tx_hash?: string;
@@ -253,6 +254,60 @@ export default function ProfilePage() {
                     >
                       View on Etherscan ↗
                     </a>
+                  </div>
+                )}
+
+                {/* FNDT Rewards History */}
+                {claims.filter((c) => c.status === 'completed').length > 0 && (
+                  <div className="card" style={{ padding: '20px 24px', marginBottom: 24 }}>
+                    <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>🪙 FNDT Reward History</h2>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>Blockchain-verified handover rewards</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {claims.filter((c) => c.status === 'completed').map((c) => (
+                        <div key={c.id} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 14px',
+                          background: 'var(--bg-surface-hover)',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border)',
+                          gap: 12, flexWrap: 'wrap',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 20 }}>🪙</span>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {c.reward_amount ?? '?'} FNDT earned
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                {formatDate(c.created_at)}
+                              </div>
+                            </div>
+                          </div>
+                          {c.tx_hash && c.tx_hash !== 'offchain' ? (
+                            <a
+                              href={`https://sepolia.etherscan.io/tx/${c.tx_hash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                fontSize: 11, color: 'var(--accent)', fontWeight: 600,
+                                textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
+                                background: 'var(--accent-subtle)', padding: '4px 10px',
+                                borderRadius: 'var(--radius-sm)',
+                              }}
+                            >
+                              {c.tx_hash.slice(0, 8)}…{c.tx_hash.slice(-6)}
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                <polyline points="15 3 21 3 21 9"/>
+                                <line x1="10" y1="14" x2="21" y2="3"/>
+                              </svg>
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>No tx hash</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
