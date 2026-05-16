@@ -71,8 +71,8 @@ contract HandoverRegistry {
     /// @notice Base reward: 10 FNDT (18 decimals).
     uint256 public constant BASE_REWARD = 10 * 1e18;
 
-    /// @notice Claim expiry duration: 1 hour.
-    uint256 public constant CLAIM_EXPIRY = 1 hours;
+    /// @notice Claim expiry duration: 24 hours (matches backend CLAIM_EXPIRY_HOURS).
+    uint256 public constant CLAIM_EXPIRY = 24 hours;
 
     /// @notice Maximum byte-length allowed for claimId / itemId strings.
     uint256 public constant MAX_STRING_LEN = 64;
@@ -298,7 +298,13 @@ contract HandoverRegistry {
     ) external {
         Claim storage c = claims[internalKey];
         require(c.createdAt != 0, "Claim not found");
-        require(c.status == ClaimStatus.Approved, "Claim not approved");
+        // Accept both Pending and Approved status — on-chain approval is optional.
+        // Admin approval is enforced off-chain (backend DB gate).
+        // This removes the need for a service wallet to call approveClaim on-chain.
+        require(
+            c.status == ClaimStatus.Pending || c.status == ClaimStatus.Approved,
+            "Claim is not in a completable state"
+        );
         require(block.timestamp <= c.expiresAt, "Claim expired");
         require(msg.sender != c.owner, "Owner cannot be finder");
         require(c.finder == address(0), "Claim already completed");

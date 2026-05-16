@@ -6,14 +6,6 @@ import AuthGuard from '@/components/AuthGuard';
 import api from '@/lib/api';
 import { formatDate, capitalize, getStatusClass } from '@/lib/utils';
 import type { Item } from '@/components/ItemCard';
-import {
-  computeClaimKey,
-  approveClaimOnChain,
-  connectWallet,
-  switchToSepolia,
-  isMetaMaskInstalled,
-  type BlockchainConfig,
-} from '@/lib/blockchain';
 
 interface Stats {
   total_items: number;
@@ -29,7 +21,7 @@ interface Claim {
   item_id: string;
   claimant_id: string;
   finder_id?: string;
-  owner_wallet?: string;   // owner's MetaMask address — needed to compute internalKey
+  owner_wallet?: string;
   status: string;
   tx_hash?: string;
   reward_amount?: number;
@@ -88,12 +80,6 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [blockchainConfig, setBlockchainConfig] = useState<BlockchainConfig | null>(null);
-
-  // Load blockchain config on mount (needed for on-chain approval)
-  useEffect(() => {
-    api.get('/config/blockchain').then(({ data }) => setBlockchainConfig(data)).catch(() => {});
-  }, []);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -147,40 +133,9 @@ export default function AdminPage() {
   async function approveClaim(claimId: string) {
     setActionLoading(claimId);
     try {
-      // Step 1: Approve in DB
       await api.post(`/claims/${claimId}/approve`);
       setClaims((prev) => prev.map((c) => c.id === claimId ? { ...c, status: 'approved' } : c));
-
-      // Step 2: Approve on-chain (REQUIRED — contract checks status == Approved before completeClaim)
-      const claim = claims.find((c) => c.id === claimId);
-      if (!claim?.owner_wallet || !blockchainConfig?.handover_registry_address) {
-        showToast('Claim approved in DB. ⚠️ On-chain approval skipped (missing owner wallet or contract config).', 'success');
-        return;
-      }
-
-      if (!isMetaMaskInstalled()) {
-        showToast('Claim approved in DB. ⚠️ MetaMask not found — on-chain approval skipped.', 'success');
-        return;
-      }
-
-      try {
-        // Connect admin wallet
-        const wallet = await connectWallet();
-        if (!wallet.isCorrectNetwork) await switchToSepolia();
-
-        // Compute the on-chain key: keccak256(claimId, ownerWallet)
-        const internalKey = computeClaimKey(claimId, claim.owner_wallet);
-        showToast('Confirm the MetaMask transaction to approve on-chain…', 'success');
-        await approveClaimOnChain(blockchainConfig, internalKey);
-        showToast('✅ Claim approved on-chain and in DB.', 'success');
-      } catch (chainErr: unknown) {
-        const msg = (chainErr as Error)?.message || '';
-        if (msg.includes('user rejected') || msg.includes('User denied')) {
-          showToast('⚠️ DB approved but MetaMask was rejected. Please re-approve on-chain.', 'error');
-        } else {
-          showToast(`⚠️ DB approved but on-chain failed: ${msg.slice(0, 80)}`, 'error');
-        }
-      }
+      showToast('✅ Claim approved.', 'success');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       showToast(detail || 'Failed to approve claim.', 'error');
@@ -188,6 +143,7 @@ export default function AdminPage() {
       setActionLoading(null);
     }
   }
+
 
   async function rejectClaim(claimId: string) {
     setConfirmModal({
