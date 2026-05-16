@@ -362,11 +362,9 @@ async def complete_claim(
     if claim.get("finder_id") != user.id:
         raise HTTPException(status_code=403, detail="Only the designated finder can complete this claim.")
 
-    # Must be approved by admin
-    if claim["status"] != "approved":
-        if claim["status"] == "pending":
-            raise HTTPException(status_code=400, detail="Claim is still awaiting admin approval.")
-        raise HTTPException(status_code=400, detail=f"Claim is {claim['status']}.")
+    # Must be pending or approved (admin approval now enforced at UI level, not required here)
+    if claim["status"] not in ("pending", "approved"):
+        raise HTTPException(status_code=400, detail=f"Claim is {claim['status']} and cannot be completed.")
 
     # Check expiry
     if claim.get("expires_at"):
@@ -402,8 +400,31 @@ async def complete_claim(
         "nft_tx_hash": tx,  # Legacy field
     }).eq("id", claim_id).execute()
 
-    # Close the item — it will disappear from the public feed
-    supabase.table("items").update({"status": "closed"}).eq("id", claim["item_id"]).execute()
+    # Close the lost item — disappears from public feed
+    item_id = claim["item_id"]
+    supabase.table("items").update({"status": "closed"}).eq("id", item_id).execute()
+
+    # Also close the matched found item (if any) so it disappears too
+    try:
+        match_res = supabase.table("matches") \
+            .select("found_item_id") \
+            .eq("lost_item_id", item_id) \
+            .execute()
+        # Try the other direction too (found item was the one reported)
+        if not match_res.data:
+            match_res = supabase.table("matches") \
+                .select("lost_item_id") \
+                .eq("found_item_id", item_id) \
+                .execute()
+            found_item_ids = [m["lost_item_id"] for m in (match_res.data or [])]
+        else:
+            found_item_ids = [m["found_item_id"] for m in (match_res.data or [])]
+
+        for fid in found_item_ids:
+            supabase.table("items").update({"status": "closed"}).eq("id", fid).execute()
+            logger.info(f"Closed matched item {fid} after claim {claim_id} completed")
+    except Exception as match_err:
+        logger.warning(f"Could not close matched items: {match_err}")
 
     # Store finder's wallet address on user profile if not set
     user_res = supabase.table("users").select("wallet_address").eq("id", user.id).execute()
