@@ -26,8 +26,8 @@ Foundit solves a real campus problem: the traditional lost & found is a clipboar
 
 | Contract | Address | Source |
 |----------|---------|--------|
-| **HandoverRegistry** | `0x031f12624b3c9a1eb5c155FBB2e8e494168305c1` | [Sourcify ↗](https://repo.sourcify.dev/contracts/full_match/11155111/0x031f12624b3c9a1eb5c155FBB2e8e494168305c1/) |
-| **FinderRewardToken (FNDT)** | `0x660708adF644eb74DdF41BBcfC40a5Cc97B60fC9` | [Sourcify ↗](https://repo.sourcify.dev/contracts/full_match/11155111/0x660708adF644eb74DdF41BBcfC40a5Cc97B60fC9/) |
+| **HandoverRegistry** | `0x55cbf1F8024dcc09f5F0Ce6347283B754De94d5F` | [Sourcify ↗](https://repo.sourcify.dev/contracts/full_match/11155111/0x55cbf1F8024dcc09f5F0Ce6347283B754De94d5F/) |
+| **FinderRewardToken (FNDT)** | `0xdeE6F61a48D1b1553F183526a59C7addEed62C8f` | [Sourcify ↗](https://repo.sourcify.dev/contracts/full_match/11155111/0xdeE6F61a48D1b1553F183526a59C7addEed62C8f/) |
 
 ---
 
@@ -106,11 +106,12 @@ Foundit solves a real campus problem: the traditional lost & found is a clipboar
 ```
 
 ### Anti-fraud mechanisms
-- Admin must approve before completion (prevents token farming)
-- Secret shared **in person only** (prevents remote fraud)
-- On-chain key = `keccak256(claimId, ownerWallet)` — binds claim to owner's address, preventing front-running
-- 1-hour claim expiry enforced on both backend and contract
-- Diminishing rewards: first find = 10 FNDT, subsequent = 8, 5, 3, 1
+- Admin must approve before completion in the backend (prevents FNDT token farming).
+- Blockchain claim completion is trustless and doesn't require admin multi-sig.
+- Secret shared **in person only** (prevents remote fraud).
+- On-chain key = `keccak256(claimId, ownerWallet)` — binds claim to owner's address, preventing front-running.
+- 24-hour claim expiry enforced on both backend and contract.
+- Diminishing rewards: first find = 10 FNDT, subsequent = 8, 5, 3, 1.
 
 ---
 
@@ -294,8 +295,8 @@ API_HOST=0.0.0.0
 API_PORT=8000
 
 # Blockchain (Sepolia) — use the live addresses or deploy your own
-REWARD_TOKEN_ADDRESS=0x660708adF644eb74DdF41BBcfC40a5Cc97B60fC9
-HANDOVER_REGISTRY_ADDRESS=0x031f12624b3c9a1eb5c155FBB2e8e494168305c1
+REWARD_TOKEN_ADDRESS=0xdeE6F61a48D1b1553F183526a59C7addEed62C8f
+HANDOVER_REGISTRY_ADDRESS=0x55cbf1F8024dcc09f5F0Ce6347283B754De94d5F
 ```
 
 ### `frontend/.env.local`
@@ -349,6 +350,7 @@ Full interactive docs available at `http://localhost:8000/docs` when the backend
 | `GET` | `/items` | Browse items (filter by type, category, search) |
 | `POST` | `/items` | Report a lost or found item (with image) |
 | `GET` | `/items/{id}` | Get item detail + AI matches |
+| `DELETE` | `/items/{id}` | Delete a user's own reported item |
 | `GET` | `/matches/mine` | Get AI matches for current user's items |
 | `POST` | `/messages` | Send a message about an item |
 | `GET` | `/messages/conversations` | List all conversations |
