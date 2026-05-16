@@ -210,6 +210,40 @@ async def get_item_claims(
     return {"claims": [_claim_for_response(c) for c in finder_rows]}
 
 
+@router.post("/item/{item_id}/cancel-mine")
+async def owner_cancel_claim(
+    item_id: UUID,
+    user: UserProfile = Depends(get_current_user),
+):
+    """
+    Allow the item OWNER to cancel their own pending or approved claim.
+    Used when the on-chain initiateClaim was never submitted and the owner
+    needs to re-initiate cleanly.
+    """
+    supabase = get_supabase_client()
+
+    # Verify ownership
+    item_res = supabase.table("items").select("user_id").eq("id", item_id).execute()
+    if not item_res.data:
+        raise HTTPException(status_code=404, detail="Item not found.")
+    if item_res.data[0]["user_id"] != user.id:
+        raise HTTPException(status_code=403, detail="Only the item owner can cancel this claim.")
+
+    # Find and cancel any active claim
+    result = supabase.table("claims") \
+        .update({"status": "rejected"}) \
+        .eq("item_id", item_id) \
+        .eq("claimant_id", user.id) \
+        .in_("status", ["pending", "approved"]) \
+        .execute()
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="No active claim found for this item.")
+
+    logger.info(f"Owner {user.id} cancelled claim for item {item_id}")
+    return {"message": "Claim cancelled. You can now re-initiate."}
+
+
 @router.get("/user/me")
 async def get_my_claims(user: UserProfile = Depends(get_current_user)):
     """Get all claims where the current user is the finder (for rewards calc)."""

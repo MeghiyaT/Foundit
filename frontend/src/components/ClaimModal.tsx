@@ -180,29 +180,28 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
     }
   };
 
-
   const handleInitiateClaim = async () => {
     setLoading(true);
     setError('');
     try {
-      // 1. Create claim on backend — get secret code
+      if (!wallet || !blockchainConfig?.handover_registry_address) {
+        throw new Error('MetaMask wallet and contract configuration are required to initiate a claim.');
+      }
+      // 1. Create claim on backend
       const { data } = await api.post('/claims', {
         item_id: itemId,
         finder_id: otherUserId,
-        owner_wallet: wallet?.address || null,
+        owner_wallet: wallet.address,
       });
       setSecretCode(data.secret_code);
       setClaimId(data.id);
 
-      const contractsDeployed = !!(blockchainConfig?.handover_registry_address && blockchainConfig?.reward_token_address);
-      if (!wallet || !contractsDeployed) {
-        throw new Error('MetaMask wallet and contract configuration are strictly required to initiate a claim.');
-      }
+      // 2. Register on-chain — owner MUST confirm MetaMask
       try {
         const key = computeClaimKey(data.id, wallet.address);
         setInternalKey(key);
         await initiateClaimOnChain(blockchainConfig!, data.id, itemId, data.secret_code);
-      } catch (chainErr) {
+      } catch {
         throw new Error('Blockchain transaction failed or was rejected. Claim cannot proceed without blockchain confirmation.');
       }
 
@@ -213,6 +212,22 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
     } finally {
       setLoading(false);
     }
+  };
+
+  // Cancel the existing stale/unregistered claim then re-initiate fresh
+  const handleCancelAndReinitiate = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await api.post(`/claims/item/${itemId}/cancel-mine`);
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail || 'Failed to cancel existing claim.');
+      setLoading(false);
+      return;
+    }
+    // loading stays true — handleInitiateClaim will manage it
+    await handleInitiateClaim();
   };
 
   const handleCompleteClaim = async () => {
@@ -459,7 +474,21 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
               </ul>
             </div>
 
-            {error && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>{error}</p>}
+            {error && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 8 }}>{error}</p>
+                {error.toLowerCase().includes('active claim already exists') && (
+                  <button
+                    className="btn btn-danger"
+                    style={{ fontSize: 13, padding: '6px 14px' }}
+                    onClick={handleCancelAndReinitiate}
+                    disabled={loading}
+                  >
+                    {loading ? 'Cancelling…' : '🔄 Cancel Existing & Re-initiate'}
+                  </button>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
