@@ -35,14 +35,14 @@ Foundit solves a real campus problem: the traditional lost & found is a clipboar
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Next.js 16 Frontend                   │
-│  Clerk Auth │ Item Feed │ AI Matches │ Messages │ Claims │
+│                    Next.js 16 Frontend                  │
+│  Clerk Auth │ Item Feed │ AI Matches │ Messages │ Claims│
 └──────────────────────┬──────────────────────────────────┘
                        │ REST API
 ┌──────────────────────▼──────────────────────────────────┐
-│                   FastAPI Backend                        │
+│                   FastAPI Backend                       │
 │  /items  /matches  /messages  /claims  /auth  /admin    │
-│                                                          │
+│                                                         │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
 │  │ HuggingFace  │  │    Resend    │  │  eth-hash     │  │
 │  │ BAAI Embeds  │  │   Emails     │  │  keccak256    │  │
@@ -50,12 +50,12 @@ Foundit solves a real campus problem: the traditional lost & found is a clipboar
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────┐
-│                  Supabase (PostgreSQL)                   │
+│                  Supabase (PostgreSQL)                  │
 │  pgvector (512-dim embeddings) │ Storage │ RLS Policies │
 └─────────────────────────────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────┐
-│              Sepolia Testnet (Ethereum)                  │
+│              Sepolia Testnet (Ethereum)                 │
 │  HandoverRegistry.sol │ FinderRewardToken.sol (ERC-20)  │
 └─────────────────────────────────────────────────────────┘
 ```
