@@ -73,7 +73,17 @@ async def get_my_matches(user: UserProfile = Depends(get_current_user)):
         existing_ids = {m["id"] for m in all_matches}
         all_matches.extend([m for m in (res.data or []) if m["id"] not in existing_ids])
 
-    return all_matches
+    valid_matches = []
+    for m in all_matches:
+        if m.get("status") == "confirmed":
+            valid_matches.append(m)
+        else:
+            lost_status = m.get("lost_item", {}).get("status") if m.get("lost_item") else None
+            found_status = m.get("found_item", {}).get("status") if m.get("found_item") else None
+            if lost_status != "closed" and found_status != "closed":
+                valid_matches.append(m)
+
+    return valid_matches
 
 
 @router.post("/{match_id}/confirm")
