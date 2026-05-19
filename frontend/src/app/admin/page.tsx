@@ -122,6 +122,7 @@ export default function AdminPage() {
     setItems((prev) => prev.map((i) => i.id === itemId ? { ...i, status: 'closed' } : i));
     setActionLoading(null);
     invalidateCache('/admin');
+    invalidateCache('/items'); // bust Browse page cache so closed status is reflected immediately
   }
 
   async function deleteItem(itemId: string) {
@@ -134,6 +135,7 @@ export default function AdminPage() {
         setItems((prev) => prev.filter((i) => i.id !== itemId));
         setActionLoading(null);
         invalidateCache('/admin');
+        invalidateCache('/items'); // also bust the Browse page cache
         showToast('Item deleted successfully.', 'success');
       },
     });
