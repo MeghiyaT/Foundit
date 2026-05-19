@@ -34,6 +34,8 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
   const [blockchainConfig, setBlockchainConfig] = useState<BlockchainConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  /** True once the initial eth_accounts check has resolved (or MetaMask is absent). */
+  const [walletChecked, setWalletChecked] = useState(false);
 
   // Owner flow state
   const [secretCode, setSecretCode] = useState('');
@@ -89,9 +91,14 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
     }
   };
 
-  // Auto-detect already-connected wallet and silently restore it
+  // Auto-detect already-connected wallet and silently restore it.
+  // walletChecked stays false until this resolves so the modal never
+  // flashes the "Connect Wallet" screen when MetaMask is already connected.
   useEffect(() => {
-    if (!isMetaMaskInstalled()) return;
+    if (!isMetaMaskInstalled()) {
+      setWalletChecked(true); // no MetaMask — go straight to connect UI
+      return;
+    }
     window.ethereum?.request({ method: 'eth_accounts' })
       .then(async (accounts: any) => {
         if (accounts && accounts.length > 0) {
@@ -111,7 +118,8 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
           }
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setWalletChecked(true));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
@@ -359,72 +367,84 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         {/* ===== STEP: CONNECT WALLET ===== */}
         {step === 'wallet' && (
           <>
-            <div style={iconBoxStyle('var(--accent)', 'var(--accent-subtle)')}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-                <line x1="1" y1="10" x2="23" y2="10"/>
-              </svg>
-            </div>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-              Connect Wallet
-            </h2>
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 8 }}>
-              {role === 'owner'
-                ? `You're initiating a claim for "${itemTitle}". Connect your MetaMask wallet to record the handover on the blockchain.`
-                : `You're completing a claim for "${itemTitle}". Connect your MetaMask wallet to receive your FNDT reward tokens.`
-              }
-            </p>
-            <div style={{
-              padding: '12px 16px', marginBottom: 20,
-              background: 'var(--warning-subtle)',
-              border: '1px solid rgba(217, 119, 6, 0.2)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 13, color: 'var(--warning)', lineHeight: 1.5,
-            }}>
-              ⚠️ Make sure you're on the <strong>Sepolia Testnet</strong>. We'll switch automatically if needed.
-            </div>
-
-            {error === '__NO_METAMASK__' ? (
-              <div style={{
-                padding: '16px', marginBottom: 16,
-                background: 'var(--warning-subtle)', border: '1px solid rgba(217,119,6,0.2)',
-                borderRadius: 'var(--radius-md)',
-              }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--warning)', marginBottom: 8 }}>
-                  🦊 MetaMask Not Detected
-                </div>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
-                  MetaMask is required to record the handover on-chain and earn FNDT tokens.
-                </p>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <a
-                    href="https://metamask.io/download/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-primary"
-                    style={{ fontSize: 13, padding: '8px 16px' }}
-                  >
-                    Install MetaMask ↗
-                  </a>
-                </div>
+            {/* Show a brief spinner while we check for an already-connected wallet.
+                This prevents the "Connect Wallet" screen from flashing when
+                MetaMask is already connected and we're about to skip this step. */}
+            {!walletChecked ? (
+              <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                <div className="spinner" style={{ margin: '0 auto 16px', width: 32, height: 32 }} />
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Checking wallet…</p>
               </div>
-            ) : error && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>{error}</p>}
+            ) : (
+              <>
+                <div style={iconBoxStyle('var(--accent)', 'var(--accent-subtle)')}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                    <line x1="1" y1="10" x2="23" y2="10"/>
+                  </svg>
+                </div>
+                <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                  Connect Wallet
+                </h2>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 8 }}>
+                  {role === 'owner'
+                    ? `You're initiating a claim for "${itemTitle}". Connect your MetaMask wallet to record the handover on the blockchain.`
+                    : `You're completing a claim for "${itemTitle}". Connect your MetaMask wallet to receive your FNDT reward tokens.`
+                  }
+                </p>
+                <div style={{
+                  padding: '12px 16px', marginBottom: 20,
+                  background: 'var(--warning-subtle)',
+                  border: '1px solid rgba(217, 119, 6, 0.2)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 13, color: 'var(--warning)', lineHeight: 1.5,
+                }}>
+                  ⚠️ Make sure you're on the <strong>Sepolia Testnet</strong>. We'll switch automatically if needed.
+                </div>
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleConnectWallet} disabled={loading}>
-                {loading ? (
-                  <><div className="spinner" style={{ width: 16, height: 16 }} /> Connecting…</>
-                ) : (
-                  <>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                    </svg>
-                    Connect MetaMask
-                  </>
-                )}
-              </button>
-            </div>
+                {error === '__NO_METAMASK__' ? (
+                  <div style={{
+                    padding: '16px', marginBottom: 16,
+                    background: 'var(--warning-subtle)', border: '1px solid rgba(217,119,6,0.2)',
+                    borderRadius: 'var(--radius-md)',
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--warning)', marginBottom: 8 }}>
+                      🦊 MetaMask Not Detected
+                    </div>
+                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
+                      MetaMask is required to record the handover on-chain and earn FNDT tokens.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <a
+                        href="https://metamask.io/download/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-primary"
+                        style={{ fontSize: 13, padding: '8px 16px' }}
+                      >
+                        Install MetaMask ↗
+                      </a>
+                    </div>
+                  </div>
+                ) : error && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>{error}</p>}
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+                  <button className="btn btn-primary" onClick={handleConnectWallet} disabled={loading}>
+                    {loading ? (
+                      <><div className="spinner" style={{ width: 16, height: 16 }} /> Connecting…</>
+                    ) : (
+                      <>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                        </svg>
+                        Connect MetaMask
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
 

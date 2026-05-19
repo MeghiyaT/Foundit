@@ -18,8 +18,24 @@ export function setTokenProvider(provider: () => Promise<string | null>) {
 // Caches GET responses for TTL_MS. Subsequent calls return the stale value
 // instantly while the fresh fetch runs in the background.
 
-const TTL_MS = 5 * 60 * 1000; // 5 minutes
-const CACHE_VERSION = 'v2';
+const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes for most endpoints
+const CACHE_VERSION = 'v3'; // bump version to clear old 5-min entries immediately
+
+// Short TTL for endpoints whose data changes frequently (deletions, status changes).
+// This limits cross-browser stale data to at most the TTL duration.
+const SHORT_TTL_PREFIXES: [string, number][] = [
+  ['/items', 60 * 1000],       // public browse feed — 60 s
+  ['/admin/items', 60 * 1000], // admin items list — 60 s
+  ['/admin/claims', 60 * 1000],// admin claims list — 60 s
+  ['/my-items', 60 * 1000],    // user's own items — 60 s
+];
+
+function getTTL(url: string): number {
+  for (const [prefix, ttl] of SHORT_TTL_PREFIXES) {
+    if (url.startsWith(prefix)) return ttl;
+  }
+  return DEFAULT_TTL_MS;
+}
 
 interface CacheEntry {
   data: unknown;
@@ -77,7 +93,7 @@ export function invalidateCache(prefix = '') {
  */
 export async function cachedGet<T = unknown>(url: string, fresh = false): Promise<T> {
   const entry = readCache(url);
-  const isStale = !entry || (Date.now() - entry.ts > TTL_MS);
+  const isStale = !entry || (Date.now() - entry.ts > getTTL(url));
 
   if (entry && !fresh) {
     if (!isStale) {
