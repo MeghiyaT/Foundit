@@ -136,6 +136,7 @@ export default function AdminPage() {
         setActionLoading(null);
         invalidateCache('/admin');
         invalidateCache('/items'); // also bust the Browse page cache
+        invalidateCache('/matches'); // bust AI matches cache
         showToast('Item deleted successfully.', 'success');
       },
     });

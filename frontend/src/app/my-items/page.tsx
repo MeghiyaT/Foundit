@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
 import ItemCard, { type Item } from '@/components/ItemCard';
-import api from '@/lib/api';
+import api, { invalidateCache } from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
 import Link from 'next/link';
 
@@ -55,6 +55,8 @@ export default function MyItemsPage() {
     try {
       await api.delete(`/items/${itemId}`);
       setItems((prev) => prev.filter((i) => i.id !== itemId));
+      invalidateCache('/items');
+      invalidateCache('/matches');
     } catch {
       alert('Failed to delete item. Please try again.');
     } finally {

@@ -28,6 +28,7 @@ const SHORT_TTL_PREFIXES: [string, number][] = [
   ['/admin/items', 60 * 1000], // admin items list — 60 s
   ['/admin/claims', 60 * 1000],// admin claims list — 60 s
   ['/my-items', 60 * 1000],    // user's own items — 60 s
+  ['/matches', 60 * 1000],     // user's AI matches — 60 s
 ];
 
 function getTTL(url: string): number {
