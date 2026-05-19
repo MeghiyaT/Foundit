@@ -368,18 +368,32 @@ export default function AdminPage() {
                       <tbody>
                         {claims.length === 0 ? (
                           <tr><td colSpan={8} style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>No claims found.</td></tr>
-                        ) : claims.map((claim, idx) => (
+                        ) : claims.map((claim, idx) => {
+                          // claimant_id = the person who *posted* the item (item.user_id).
+                          // For a FOUND item the poster is the real-world finder, not the owner,
+                          // so we swap which person appears in the Owner vs Finder column.
+                          const isFoundItem = claim.items?.type === 'found';
+                          const ownerDisplay = isFoundItem
+                            ? (claim.finder?.name || claim.finder?.email || '—')
+                            : (claim.claimant?.name || claim.claimant?.email || claim.claimant_id?.split('@')[0] || '—');
+                          const finderDisplay = isFoundItem
+                            ? (claim.claimant?.name || claim.claimant?.email || claim.claimant_id?.split('@')[0] || '—')
+                            : (claim.finder?.name || claim.finder?.email || '—');
+                          return (
                           <tr key={claim.id} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 ? 'var(--bg-surface-hover)' : 'transparent' }}>
                             <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--text-primary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {claim.items?.title || 'Unknown'}
+                              {claim.items?.type && (
+                                <span className={`badge ${claim.items.type === 'lost' ? 'badge-lost' : 'badge-found'}`} style={{ marginLeft: 6, fontSize: 10 }}>
+                                  {capitalize(claim.items.type)}
+                                </span>
+                              )}
                             </td>
                             <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: 13 }}>
-                              {claim.claimant?.name || claim.claimant?.email
-                                ? (claim.claimant.name || claim.claimant.email)
-                                : claim.claimant_id?.split('@')[0] || '—'}
+                              {ownerDisplay}
                             </td>
                             <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: 13 }}>
-                              {claim.finder?.name || claim.finder?.email || '—'}
+                              {finderDisplay}
                             </td>
                             <td style={{ padding: '12px 16px' }}>
                               <span style={{
@@ -451,7 +465,8 @@ export default function AdminPage() {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
