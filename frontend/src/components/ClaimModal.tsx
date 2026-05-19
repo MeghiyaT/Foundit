@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import api from '@/lib/api';
+import api, { invalidateCache } from '@/lib/api';
 import {
   isMetaMaskInstalled,
   connectWallet,
@@ -322,6 +322,11 @@ export default function ClaimModal({ itemId, itemTitle, otherUserId, role, onClo
         throw chainErr;
       }
 
+      invalidateCache('/items');
+      invalidateCache('/my-items');
+      invalidateCache('/matches');
+      invalidateCache('/admin');
+      
       setStep('success');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;

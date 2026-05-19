@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import AuthGuard from '@/components/AuthGuard';
 import ImageUpload from '@/components/ImageUpload';
-import api from '@/lib/api';
+import api, { invalidateCache } from '@/lib/api';
 import { CATEGORIES } from '@/lib/utils';
 
 const LOCATIONS = [
@@ -73,6 +73,9 @@ function ReportForm() {
       const { data } = await api.post('/items', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
+      invalidateCache('/items');
+      invalidateCache('/my-items');
 
       router.push(`/items/${data.id}?success=1`);
     } catch (err: unknown) {
