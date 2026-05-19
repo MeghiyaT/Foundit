@@ -20,28 +20,37 @@ async def get_item_matches(item_id: UUID):
     supabase = get_supabase_client()
 
     # Fetch item type only (avoid leaking other fields)
-    item_res = supabase.table("items").select("type").eq("id", item_id).execute()
+    item_res = supabase.table("items").select("type, status").eq("id", item_id).execute()
     if not item_res.data:
         raise HTTPException(status_code=404, detail="Item not found.")
     item_type = item_res.data[0]["type"]
+    item_status = item_res.data[0]["status"]
 
     # Fetch stored matches (nested items without embeddings)
     if item_type == "lost":
         matches_res = supabase.table("matches").select(
             f"*, found_item:items!found_item_id{_ITEM_EMBED}"
         ).eq("lost_item_id", item_id).order("similarity_score", desc=True).execute()
-        return [
-            {**m, "matched_item": m.get("found_item")}
-            for m in (matches_res.data or [])
-        ]
+        valid_matches = []
+        for m in (matches_res.data or []):
+            if m.get("status") == "confirmed":
+                valid_matches.append({**m, "matched_item": m.get("found_item")})
+            else:
+                if item_status != "closed" and m.get("found_item", {}).get("status") != "closed":
+                    valid_matches.append({**m, "matched_item": m.get("found_item")})
+        return valid_matches
     else:
         matches_res = supabase.table("matches").select(
             f"*, lost_item:items!lost_item_id{_ITEM_EMBED}"
         ).eq("found_item_id", item_id).order("similarity_score", desc=True).execute()
-        return [
-            {**m, "matched_item": m.get("lost_item")}
-            for m in (matches_res.data or [])
-        ]
+        valid_matches = []
+        for m in (matches_res.data or []):
+            if m.get("status") == "confirmed":
+                valid_matches.append({**m, "matched_item": m.get("lost_item")})
+            else:
+                if item_status != "closed" and m.get("lost_item", {}).get("status") != "closed":
+                    valid_matches.append({**m, "matched_item": m.get("lost_item")})
+        return valid_matches
 
 
 @router.get("/mine")
