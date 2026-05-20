@@ -50,7 +50,7 @@ export default function ImageUpload({ onFileSelect, preview, onRemove, disabled 
           alt="Preview"
           width={600}
           height={400}
-          style={{ width: '100%', height: 240, objectFit: 'cover', display: 'block' }}
+          style={{ width: '100%', height: 240, objectFit: 'contain', display: 'block' }}
         />
         {onRemove && !disabled && (
           <button
