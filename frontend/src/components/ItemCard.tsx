@@ -32,7 +32,7 @@ export default function ItemCard({ item }: Props) {
     >
       <article
         className="card card-interactive animate-fade-in"
-        style={{ overflow: 'hidden', cursor: 'pointer' }}
+        style={{ overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column', height: '100%' }}
       >
         {/* Image */}
         <div style={{
@@ -86,7 +86,7 @@ export default function ItemCard({ item }: Props) {
         </div>
 
         {/* Content */}
-        <div style={{ padding: '16px' }}>
+        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', flex: 1 }}>
           <h3 style={{
             fontSize: 15, fontWeight: 600,
             color: 'var(--text-primary)',
@@ -109,7 +109,7 @@ export default function ItemCard({ item }: Props) {
             </p>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 'auto' }}>
             {item.location && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)' }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
