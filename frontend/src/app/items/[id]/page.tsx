@@ -143,7 +143,7 @@ function ItemDetail() {
             {/* Image */}
             {item.image_url && (
               <div style={{ position: 'relative', aspectRatio: '16/7', background: 'var(--bg-surface-hover)' }}>
-                <Image src={item.image_url} alt={item.title} fill sizes="800px" style={{ objectFit: 'cover' }} priority />
+                <Image src={item.image_url} alt={item.title} fill sizes="800px" style={{ objectFit: 'contain' }} priority />
                 <div style={{ position: 'absolute', top: 16, left: 16 }}>
                   <span className={`badge ${isLost ? 'badge-lost' : 'badge-found'}`} style={{ fontSize: 13, padding: '5px 14px' }}>
                     {isLost ? 'Lost' : 'Found'}

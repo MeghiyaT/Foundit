@@ -83,7 +83,7 @@ export default function MatchCard({ match, currentItem, onClaim }: Props) {
         <div style={{ flex: 1, padding: 20, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
           {currentItem.image_url && (
             <div style={{ width: 72, height: 72, borderRadius: 'var(--radius-md)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-              <Image src={currentItem.image_url} alt={currentItem.title} fill sizes="72px" style={{ objectFit: 'cover' }} />
+              <Image src={currentItem.image_url} alt={currentItem.title} fill sizes="72px" style={{ objectFit: 'contain' }} />
             </div>
           )}
           <div>
@@ -104,7 +104,7 @@ export default function MatchCard({ match, currentItem, onClaim }: Props) {
         <div style={{ flex: 1, padding: 20, display: 'flex', gap: 14, alignItems: 'flex-start', background: 'var(--bg-surface-hover)' }}>
           {matched.image_url && (
             <div style={{ width: 72, height: 72, borderRadius: 'var(--radius-md)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-              <Image src={matched.image_url} alt={matched.title} fill sizes="72px" style={{ objectFit: 'cover' }} />
+              <Image src={matched.image_url} alt={matched.title} fill sizes="72px" style={{ objectFit: 'contain' }} />
             </div>
           )}
           <div>

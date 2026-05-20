@@ -46,7 +46,7 @@ export default function ItemCard({ item }: Props) {
               src={item.image_url}
               alt={item.title}
               fill
-              style={{ objectFit: 'cover', transition: 'transform 300ms ease' }}
+              style={{ objectFit: 'contain', transition: 'transform 300ms ease' }}
               onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.03)')}
               onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"

@@ -261,7 +261,7 @@ export default function MatchesPage() {
                         <div style={{ padding: 20, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                           {match.lost_item?.image_url && (
                             <div style={{ width: 72, height: 72, borderRadius: 'var(--radius-md)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-                              <Image src={match.lost_item.image_url} alt={match.lost_item.title} fill sizes="72px" style={{ objectFit: 'cover' }} />
+                              <Image src={match.lost_item.image_url} alt={match.lost_item.title} fill sizes="72px" style={{ objectFit: 'contain' }} />
                             </div>
                           )}
                           <div>
@@ -288,7 +288,7 @@ export default function MatchesPage() {
                         <div style={{ padding: 20, display: 'flex', gap: 14, alignItems: 'flex-start', background: 'var(--bg-surface-hover)' }}>
                           {match.found_item?.image_url && (
                             <div style={{ width: 72, height: 72, borderRadius: 'var(--radius-md)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-                              <Image src={match.found_item.image_url} alt={match.found_item.title} fill sizes="72px" style={{ objectFit: 'cover' }} />
+                              <Image src={match.found_item.image_url} alt={match.found_item.title} fill sizes="72px" style={{ objectFit: 'contain' }} />
                             </div>
                           )}
                           <div>
