@@ -78,10 +78,15 @@ async def initiate_claim(
         raise HTTPException(status_code=404, detail="Item not found.")
     item = item_res.data[0]
 
-    if item.get("user_id") != user.id:
+    if item["type"] == "lost" and item.get("user_id") != user.id:
         raise HTTPException(
             status_code=403,
             detail="Only the item owner can initiate a claim for this item.",
+        )
+    elif item["type"] == "found" and item.get("user_id") == user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You posted this 'found' item, so you are the finder. The person who lost it (the owner) must initiate the claim.",
         )
 
     if payload.finder_id == user.id:
@@ -223,11 +228,15 @@ async def owner_cancel_claim(
     supabase = get_supabase_client()
 
     # Verify ownership
-    item_res = supabase.table("items").select("user_id").eq("id", item_id).execute()
+    item_res = supabase.table("items").select("user_id, type").eq("id", item_id).execute()
     if not item_res.data:
         raise HTTPException(status_code=404, detail="Item not found.")
-    if item_res.data[0]["user_id"] != user.id:
+    item = item_res.data[0]
+    
+    if item["type"] == "lost" and item.get("user_id") != user.id:
         raise HTTPException(status_code=403, detail="Only the item owner can cancel this claim.")
+    elif item["type"] == "found" and item.get("user_id") == user.id:
+        raise HTTPException(status_code=403, detail="You are the finder. Only the owner can cancel their claim.")
 
     # Find and cancel any active claim
     result = supabase.table("claims") \
