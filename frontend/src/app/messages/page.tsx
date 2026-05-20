@@ -19,6 +19,7 @@ interface Conversation {
   item_title: string;
   item_image_url?: string;
   item_owner_id?: string;
+  item_type?: string;
   other_user_email: string;
   other_user_name?: string;
 }
@@ -81,7 +82,12 @@ export default function MessagesPage() {
     setLoadingThread(true);
     // Set role eagerly from conv.item_owner_id before any async work
     if (conv.item_owner_id && userId) {
-      setUserRole(conv.item_owner_id === userId ? 'owner' : 'finder');
+      const isPoster = conv.item_owner_id === userId;
+      if (conv.item_type === 'found') {
+        setUserRole(isPoster ? 'finder' : 'owner');
+      } else {
+        setUserRole(isPoster ? 'owner' : 'finder');
+      }
     }
     try {
       const { data } = await api.get(`/messages/thread/${conv.item_id}/${conv.other_user_id}`);
@@ -89,10 +95,13 @@ export default function MessagesPage() {
       setOtherUser(data.other_user);
       const item = data.item || null;
       setThreadItem(item);
-      if (typeof data.is_owner === 'boolean') {
-        setUserRole(data.is_owner ? 'owner' : 'finder');
-      } else if (item?.user_id && userId) {
-        setUserRole(item.user_id === userId ? 'owner' : 'finder');
+      if (item && userId) {
+        const isPoster = item.user_id === userId;
+        if (item.type === 'found') {
+          setUserRole(isPoster ? 'finder' : 'owner');
+        } else {
+          setUserRole(isPoster ? 'owner' : 'finder');
+        }
       }
     } catch {
       setThread([]);

@@ -117,7 +117,7 @@ async def get_conversations(
 
     items_map = {}
     if item_ids:
-        items_res = supabase.table("items").select("id, title, image_url, user_id").in_("id", item_ids).execute()
+        items_res = supabase.table("items").select("id, title, image_url, type, user_id").in_("id", item_ids).execute()
         items_map = {i["id"]: i for i in (items_res.data or [])}
 
     users_map = {}
@@ -131,6 +131,7 @@ async def get_conversations(
         c["item_title"] = item_info.get("title", "Unknown item")
         c["item_image_url"] = item_info.get("image_url")
         c["item_owner_id"] = item_info.get("user_id")
+        c["item_type"] = item_info.get("type", "lost")
         c["other_user_email"] = user_info.get("email", "Unknown")
         c["other_user_name"] = user_info.get("name")
         # Expose the latest message timestamp explicitly for unread-count logic
